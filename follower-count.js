@@ -26,11 +26,17 @@ const STORE_CACHE = "icloud"; // options: icloud, local
 
 // Default usernames
 // (can be overwritten by widget parameters (see above))
-var twitter = "jankortemdb";
-var mastodon = "jankorte@social.linksfraktion.de";
-var instagram = "jankorte77";
-var facebook = "jankortemdb";
-var youtube = "jankortemdb";
+var twitter = "test";
+var mastodon = "test@test.example.social";
+var instagram = "test";
+var facebook = "test";
+var youtube = "test";
+
+// Append "Followers" or "Subscribers" behind the number?
+const HIDE_FOLLOWERS_LABEL = true;
+
+// In which interval do you want to query your follower count?
+const CACHE_TTL = 3600; // in seconds. 3600s = 1h
 
 // Styling
 const BACKGROUND_COLOR = Color.dynamic(
@@ -85,6 +91,7 @@ async function downloadSocialIcons() {
     if (!fm.fileExists(img_path)) {
       console.log("loading image: " + img + ".png");
       let request = new Request(SOCIAL_ICONS_FOLDER_URL + img + ".png");
+      request.timeoutInterval(REQUEST_TIMEOUT);
       console.log(request);
       image = await request.loadImage();
       fm.writeImage(img_path, image);
@@ -103,17 +110,77 @@ async function getImageFor(platform, version = "standard") {
   return img;
 }
 
-async function saveData(data) {
+async function writeDataToCache(data) {
   data.savedDate = Date.now();
   fm.writeString(path, JSON.stringify(data));
   console.log("saved new data to file");
 }
 
-async function getFromFile() {
+async function getDataFromCache() {
   await fm.downloadFileFromiCloud(path);
   data = await JSON.parse(fm.readString(path));
   console.log("fetching data from file was successful");
   return data;
+}
+
+function configFileFirstInit() {
+  // define timestamp that forces script to reload data in the next step
+  let outdated_timestamp = Date.now() - ((CACHE_TTL-1) * 1000);
+
+  // define object variable to be written later on
+  let data = new Object();
+  data.cached = [];
+
+  // write twitter username to cache (if set)
+  if (twitter) {
+    data.cached.push ({
+      timestamp: outdated_timestamp,
+      platform: "twitter",
+      username: twitter,
+      followers: null
+    });
+  }
+
+  // write mastodon username to cache  (if set)
+  if (mastodon) {
+    data.cached.push({
+      timestamp: outdated_timestamp,
+      platform: "mastodon",
+      username: mastodon,
+      followers: null
+    });
+  }
+
+  // write instagram username to cache  (if set)
+  if (instagram) {
+    data.cached.push({
+      timestamp: outdated_timestamp,
+      platform: "instagram",
+      username: instagram,
+      followers: null
+    });
+  }
+
+  // write facebook username to cache  (if set)
+  if (facebook) {
+    data.cached.push({
+      timestamp: outdated_timestamp,
+      platform: "facebook",
+      username: facebook,
+      followers: null
+    });
+  }
+
+  // write youtube username to cache  (if set)
+  if (youtube) {
+    data.cached.push({
+      timestamp: outdated_timestamp,
+      platform: "youtube",
+      username: youtube,
+      followers: null
+    });
+  }
+  writeDataToCache(data);
 }
 
 // get username
@@ -180,42 +247,163 @@ function createLinearGradient(colors) {
     return gradient;
 }
 
-async function getData(platform, append_followers = true) {
-  let data = 1234;
-  let followers_name = "Followers";
-  // Check if there is a cache file & cache file time stamp
-  // data = getDataFromCache(platform);
+// Load Twitter Followers
+async function loadTwitterFollowers(user) {
+  // requesting data
+  // let request_url = "https://mobile.twitter.com/" + user;
+  let url = "https://nitter.it/" + user;
+  
+  let request = new Request(url);
+  request.headers = {
+    "User-Agent":
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 13_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Mobile/15E148 Safari/604.1",
+  };
+  
+  let wv = new WebView();
+  await wv.loadRequest(request);
+  let html = await wv.getHTML();
+  let regex = /\<span\sclass\=\"profile\-stat\-num\"\>([\d\.\,]+)\<\/span\>/gi;
 
-  // If there is no cache file or time stamp is too old, load data:
+  // get fourth regex match (Followers)
+  let followers = 0;
+  for (let i = 0; i < 3; i++) {
+    followers = regex.exec(html)[1];
+  }
+  followers = followers.replace(/\,/g, "");
+  followers = parseInt(followers);
+
+  return followers;
+}
+
+async function loadMastodonFollowers(user) {
+  return 1234;
+}
+
+async function loadInstagramFollowers(user) {
+  return 1234;
+}
+
+async function loadFacebookFans(user) {
+  return 1234;
+}
+
+async function loadYouTubeSubscribers(user) {
+  return 1234;
+}
+
+async function getData(platform, hide_followers) {
+  let data = 0;
+  var username = null;
+
+  // Followers name and username?
+  let followers_name = "Followers";
   switch (platform) {
     case "twitter":
-      //data = loadTwitterFollowers();
+      username = twitter;
       followers_name = "Followers";
       break;
     case "mastodon":
-      //data = loadMastodonFollowers();
+      username = mastodon;
       followers_name = "Followers";
       break;
     case "instagram":
-      //data = loadInstagramFollowers();
+      username = instagram;
       followers_name = "Followers";
       break;
     case "facebook":
-      //data = loadFacebookFans();
-      followers_name = "Likes";
+      username = facebook;
+      followers_name = "Page Likes";
       break;
     case "youtube":
-      //data = loadYouTubeSubscribers();
+      username = youtube;
       followers_name = "Subscribers";
       break;
-    default:
-      console.error("getData(): ", "platform not found.");
   }
-  // writeDataToCache(platform, data);
+  
+  let from_cache = await getDataFromCache();
+
+  // try to get object for platform
+  let found_object_index = await from_cache.cached.findIndex(item => item.platform === platform && item.username === username);
+
+  // Check if data is cached
+  if (found_object_index != -1){
+    // data is cached.
+    console.log("getData(): requested data is cached.");
+
+    // now get timestamp 
+    let found_object = from_cache.cached[found_object_index];
+    let timestamp = found_object.timestamp;
+
+    // if time stamp is too old, load data:
+    if (Math.floor((Date.now() - timestamp) / 1000) >= CACHE_TTL) {
+      // data is cached but too old. loading new data.
+      console.log("getData(): cached data too old. loading new data.");
+      // call right function to load followers
+      switch (platform) {
+        case "twitter":
+          data = await loadTwitterFollowers(twitter);
+          break;
+        case "mastodon":
+          data = await loadMastodonFollowers(mastodon);
+          break;
+        case "instagram":
+          data = await loadInstagramFollowers(instagram);
+          break;
+        case "facebook":
+          data = await loadFacebookFans(facebook);
+          break;
+        case "youtube":
+          data = await loadYouTubeSubscribers(youtube);
+          break;
+      }
+      // now replace data in cache file
+      found_object.timestamp = Date.now();
+      found_object.followers = await data;
+      from_cache.cached[found_object_index] = found_object;
+      writeDataToCache(from_cache);
+      console.log("wrote new " + platform + " followers count to cache: " + data);
+    } else {
+      // time stamp was not too old. load from cache.
+      console.log("cached data still valid.")
+      data = found_object.followers;
+    }
+  } else {
+    // requested data not found in cache. loading...
+    console.log("getData(): requested data is not cached.");
+
+    let new_follower_count = 0;
+    // call right function to load followers
+    switch (platform) {
+      case "twitter":
+        new_follower_count = await loadTwitterFollowers(twitter);
+        break;
+      case "mastodon":
+        new_follower_count = await loadMastodonFollowers(mastodon);
+        break;
+      case "instagram":
+        new_follower_count = await loadInstagramFollowers(instagram);
+        break;
+      case "facebook":
+        new_follower_count = await loadFacebookFans(facebook);
+        break;
+      case "youtube":
+        new_follower_count = await loadYouTubeSubscribers(youtube);
+        break;
+    }
+
+    let new_data_object = new Object();
+    new_data_object.timestamp = Date.now();
+    new_data_object.platform = platform;
+    new_data_object.username = username;
+    new_data_object.followers = await new_follower_count;
+
+    from_cache.cached.push(new_data_object);
+    writeDataToCache(from_cache);
+  }
 
   // Format Data
-  let data_string = parseInt(data).toLocaleString(); 
-  if (append_followers) {
+  let data_string = data.toLocaleString(); 
+  if (!hide_followers) {
     data_string = data_string + " " + followers_name;
   }
   return data_string;
@@ -239,7 +427,7 @@ for (let i = platforms.length - 1; i >= 0; i--) {
   // if social network name is found in parameter string, overwrite username variable with matched username string
   if (display_mode.includes(platforms[i] + ":")) {
     let new_username = getUsernameParameters(platforms[i], parameters);
-    let set_username = setUsername(platforms[i], new_username);
+    setUsername(platforms[i], new_username);
     console.log(platforms[i] + " username overwritten: " + new_username);
   }
 }
@@ -314,7 +502,6 @@ async function createErrorWidget(heading, text = "") {
     subtext.font = small_font;
     subtext.textColor = new Color("#ffffff");
   }
-
   return error_widget;
 }
 
@@ -373,7 +560,7 @@ async function createSmallWidgetSingle(platform, show_username = true) {
   small_widget_single.addSpacer(10);
 
   // get and display follower count for specific platform
-  let data = await getData(platform);
+  let data = await getData(platform, HIDE_FOLLOWERS_LABEL);
   let display_follower_count = small_widget_single.addText(data);
   display_follower_count.centerAlignText();
   display_follower_count.font = bold_font;
@@ -381,10 +568,11 @@ async function createSmallWidgetSingle(platform, show_username = true) {
   display_follower_count.textColor = font_color;
 
   if (show_username) {
-    small_widget_single.addSpacer(3);
+    small_widget_single.addSpacer(1);
     let display_username = small_widget_single.addText("@" + getUsername(platform));
     display_username.centerAlignText();
     display_username.font = small_font;
+    display_username.minimumScaleFactor = 0.8;
     display_username.textColor = font_color;
   }
 
@@ -401,6 +589,13 @@ async function createSmallWidgetSingle(platform, show_username = true) {
 await downloadSocialIcons();
 
 // PROGRAM LOGIC
+// Check if cache file exists; write if doesen't.
+if (!fm.fileExists(path)) {
+  console.log("looks like your first init.");
+  configFileFirstInit();
+
+}
+
 // default widget: error. Get overwritten in the next code block.
 let widget = await createDefaultWidget("Please fill in config.");
 
@@ -410,7 +605,6 @@ if (display_mode == "error"){
   widget = await createErrorWidget("Platform not found.", "Check widget parameters.");
 } else if (display_mode.length > 1 || display_mode.includes("all")){
   //more than one platform to show
-  console.log("more than one platform to show.");
   switch (widget_size){
     case "large":
       // large single widget
