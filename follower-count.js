@@ -26,14 +26,17 @@ const STORE_CACHE = "icloud"; // options: icloud, local
 
 // Default usernames
 // (can be overwritten by widget parameters (see above))
-var twitter = "test";
-var mastodon = "test@test.example.social";
-var instagram = "test";
-var facebook = "test";
-var youtube = "test";
+var twitter = "jankortemdb";
+var mastodon = "jankorte@social.linksfraktion.de";
+var instagram = "jankorte77";
+var facebook = "jankortemdb";
+var youtube = "jankortemdb";
 
 // Append "Followers" or "Subscribers" behind the number?
 const HIDE_FOLLOWERS_LABEL = true;
+
+// Hide username in the widgets?
+const HIDE_USERNAME = false;
 
 // In which interval do you want to query your follower count?
 const CACHE_TTL = 3600; // in seconds. 3600s = 1h
@@ -53,25 +56,40 @@ const TEXT_COLOR = Color.dynamic(
 
 // Social Icons constants
 const SOCIAL_ICONS_FOLDER_URL = "https://raw.githubusercontent.com/hutt/scriptable-follower-count-widget/main/icons/";
-const SOCIAL_ICONS_FILENAMES = ["facebook", "facebook_white", "instagram", "instagram_white", "mastodon", "mastodon_white", "twitter", "twitter_white", "youtube"];
+const SOCIAL_ICONS_FILENAMES = ["facebook", "facebook_white", "instagram", "instagram_white", "mastodon", "mastodon_white", "twitter", "twitter_white", "youtube", "youtube_white"];
 const REQUEST_TIMEOUT = 3; // how many seconds until timeout when downloading social icons?
 
 // HELPER FUNCTIONS
-// Get display parameter
-function getDisplayParameters(parameters){
-  let params = parameters;
-  if (!parameters){
-    params = "display:all";
-  }
-  let available_platforms = ["twitter", "mastodon", "instagram", "facebook", "youtube", "all"];
-  let regex = /display:([\w,]+)[;\s]*/gi;
-  let parameter_string = regex.exec(params);
-  let parameter_value = parameter_string[1];
-  let platforms = parameter_value.split(",");
-  for (let platform of platforms){
-    if (!available_platforms.includes(platform)){
-      platforms = "error";
+// Validate Parameters
+function validateParameters(parameters) {
+  let check_for = ["display", "twitter", "mastodon", "instagram", "facebook", "youtube"];
+  let contains_keyword = false;
+  for (keyword of check_for) {
+    if(parameters.includes(keyword)){
+      contains_keyword = true;
     }
+  }
+  return contains_keyword;
+}
+
+// Get display parameter
+function getDisplayParameters(parameters) {
+  let platforms = null;
+  if (validateParameters(parameters)){
+    // parameters are valid
+    let available_platforms = ["twitter", "mastodon", "instagram", "facebook", "youtube", "all"];
+    let regex = /display:([\w,]+)[;\s]*/gi;
+    let parameter_string = regex.exec(parameters);
+    let parameter_value = parameter_string[1];
+    platforms = parameter_value.split(",");
+    for (let platform of platforms){
+      if (!available_platforms.includes(platform)){
+        platforms = "error";
+      }
+    }
+  } else {
+    // parameters are not valid
+    platforms = "error";
   }
   return platforms;
 }
@@ -91,7 +109,6 @@ async function downloadSocialIcons() {
     if (!fm.fileExists(img_path)) {
       console.log("loading image: " + img + ".png");
       let request = new Request(SOCIAL_ICONS_FOLDER_URL + img + ".png");
-      request.timeoutInterval(REQUEST_TIMEOUT);
       console.log(request);
       image = await request.loadImage();
       fm.writeImage(img_path, image);
@@ -137,7 +154,7 @@ function configFileFirstInit() {
       timestamp: outdated_timestamp,
       platform: "twitter",
       username: twitter,
-      followers: null
+      followers: 0
     });
   }
 
@@ -147,7 +164,7 @@ function configFileFirstInit() {
       timestamp: outdated_timestamp,
       platform: "mastodon",
       username: mastodon,
-      followers: null
+      followers: 0
     });
   }
 
@@ -157,7 +174,7 @@ function configFileFirstInit() {
       timestamp: outdated_timestamp,
       platform: "instagram",
       username: instagram,
-      followers: null
+      followers: 0
     });
   }
 
@@ -167,7 +184,7 @@ function configFileFirstInit() {
       timestamp: outdated_timestamp,
       platform: "facebook",
       username: facebook,
-      followers: null
+      followers: 0
     });
   }
 
@@ -177,7 +194,7 @@ function configFileFirstInit() {
       timestamp: outdated_timestamp,
       platform: "youtube",
       username: youtube,
-      followers: null
+      followers: 0
     });
   }
   writeDataToCache(data);
@@ -227,6 +244,45 @@ function setUsername(platform, name) {
   }
 }
 
+function getMastodonUsernameWithoutInstanceUrl(username){
+  let regex = /^([\w]+)\@([\w\.]+)$/gi;
+  username = regex.exec(username)[1];
+  return username;
+}
+
+function getMastodonInstanceUrl(username){
+  let regex = /^([\w]+)\@([\w\.]+)$/gi;
+  let instance_url = regex.exec(username)[2];
+  return instance_url;
+}
+
+// get profile url
+function getProfileUrl(platform) {
+  let url = "https://";
+  let username = getUsername(platform);
+  switch (platform){
+    case "twitter":
+      url += "twitter.com";
+      break;
+    case "mastodon":
+      url += getMastodonInstanceUrl(username);
+      username = "@" + getMastodonUsernameWithoutInstanceUrl(username);
+      break;
+    case "instagram":
+      url += "instagram.com";
+      break;
+    case "facebook":
+      url += "facebook.com";
+      break;
+    case "youtube":
+      url += "youtube.com";
+      username = "@" + username;
+    break;
+  }
+  url += "/" + username;
+  return url;
+}
+
 function createLinearGradient(colors) {
     let gradient = new LinearGradient();
 
@@ -235,7 +291,7 @@ function createLinearGradient(colors) {
     let colors_array = [];
     for (let i = 0; i < num_locations - 1; i++) {
       let color_location = i * (1 / (num_locations - 1));
-      color_location = color_location.toFixed(3);
+      color_location = color_location.toFixed(6);
       locations_array.push(parseFloat(color_location));
 
       let color = new Color(colors[i]);
@@ -276,7 +332,18 @@ async function loadTwitterFollowers(user) {
 }
 
 async function loadMastodonFollowers(user) {
-  return 1234;
+	// requesting data
+	// building request url
+  let url = "https://";
+  url += getMastodonInstanceUrl(user);
+  url += "/api/v1/accounts/lookup?acct=";
+  url += getMastodonUsernameWithoutInstanceUrl(user);
+  
+  let request = new Request(url);
+  let data = await request.loadJSON();
+  let followers = data.followers_count;
+
+  return followers;
 }
 
 async function loadInstagramFollowers(user) {
@@ -371,23 +438,22 @@ async function getData(platform, hide_followers) {
     // requested data not found in cache. loading...
     console.log("getData(): requested data is not cached.");
 
-    let new_follower_count = 0;
     // call right function to load followers
     switch (platform) {
       case "twitter":
-        new_follower_count = await loadTwitterFollowers(twitter);
+        data = await loadTwitterFollowers(twitter);
         break;
       case "mastodon":
-        new_follower_count = await loadMastodonFollowers(mastodon);
+        data = await loadMastodonFollowers(mastodon);
         break;
       case "instagram":
-        new_follower_count = await loadInstagramFollowers(instagram);
+        data = await loadInstagramFollowers(instagram);
         break;
       case "facebook":
-        new_follower_count = await loadFacebookFans(facebook);
+        data = await loadFacebookFans(facebook);
         break;
       case "youtube":
-        new_follower_count = await loadYouTubeSubscribers(youtube);
+        data = await loadYouTubeSubscribers(youtube);
         break;
     }
 
@@ -395,7 +461,7 @@ async function getData(platform, hide_followers) {
     new_data_object.timestamp = Date.now();
     new_data_object.platform = platform;
     new_data_object.username = username;
-    new_data_object.followers = await new_follower_count;
+    new_data_object.followers = await data;
 
     from_cache.cached.push(new_data_object);
     writeDataToCache(from_cache);
@@ -412,11 +478,15 @@ async function getData(platform, hide_followers) {
 // PARAMETERS
 // Get parameters; if none, set "display:all"
 let parameters = await args.widgetParameter;
+if (!parameters){
+  parameters = "display:all";
+}
+
 let display_mode = getDisplayParameters(parameters);
 
 // check if the platform named after "display:" ist valid
 if (display_mode == "error") {
-  console.error("specified platform not found.");
+  console.error("specified platform not found (or you forgot a \";\" to seperate the display parameter from a username.");
 } else {
   console.log("showing follower count for the following platform(s): " + display_mode.join(", "));
 }
@@ -425,7 +495,7 @@ if (display_mode == "error") {
 let platforms = ["twitter", "mastodon", "instagram", "facebook", "youtube"];
 for (let i = platforms.length - 1; i >= 0; i--) {
   // if social network name is found in parameter string, overwrite username variable with matched username string
-  if (display_mode.includes(platforms[i] + ":")) {
+  if (parameters.includes(platforms[i] + ":")) {
     let new_username = getUsernameParameters(platforms[i], parameters);
     setUsername(platforms[i], new_username);
     console.log(platforms[i] + " username overwritten: " + new_username);
@@ -471,18 +541,27 @@ if (fm.listContents(icons_dir).length == 0) {
 // small widget
 let thin_font = Font.regularRoundedSystemFont(13);
 let small_font = Font.regularRoundedSystemFont(11);
-let bold_font = Font.heavyRoundedSystemFont(18);
-let title_font = Font.heavyRoundedSystemFont(16);
+let bold_font = Font.blackSystemFont(20);
+let title_font = Font.heavySystemFont(16);
 
 // WIDGETS
-async function createDefaultWidget(text) {
+async function createDefaultWidget(heading, text = "") {
   let default_widget = new ListWidget();
   default_widget.backgroundColor = BACKGROUND_COLOR;
 
-  let header = default_widget.addText(text);
+  let header = default_widget.addText(heading);
   header.centerAlignText();
   header.font = title_font;
   header.textColor = TEXT_COLOR;
+
+  if (text){
+    default_widget.addSpacer(5);
+    let subtext = default_widget.addText(text);
+    subtext.centerAlignText();
+    subtext.font = small_font;
+    subtext.textColor = TEXT_COLOR;
+  }
+
   return default_widget;
 }
 
@@ -502,6 +581,7 @@ async function createErrorWidget(heading, text = "") {
     subtext.font = small_font;
     subtext.textColor = new Color("#ffffff");
   }
+
   return error_widget;
 }
 
@@ -522,7 +602,7 @@ async function createSmallWidgetSingle(platform, show_username = true) {
       icon_version = "white";
       break;
     case "instagram":
-      bg = ["gradient", ["#7635fa", "#9e19f3", "#b803ec", "#d300c9", "#d20da8", "#ea1972", "#f7363c", "#fd630d", "#ff6c08", "#ffb000", "#ffcf00"]];
+      bg = ["gradient", ["#4f5bd5", "#962fbf", "#d62976", "#fa7e1e", "#feda75"]];
       font_color = new Color("#ffffff");
       icon_version = "white";
       break;
@@ -554,7 +634,7 @@ async function createSmallWidgetSingle(platform, show_username = true) {
   // load and add social icon
   var img = await getImageFor(platform, icon_version);
   var widget_image = small_widget_single.addImage(img);
-  widget_image.imageSize = new Size(75, 75);
+  widget_image.imageSize = new Size(64, 64);
   widget_image.centerAlignImage();
 
   small_widget_single.addSpacer(10);
@@ -564,7 +644,7 @@ async function createSmallWidgetSingle(platform, show_username = true) {
   let display_follower_count = small_widget_single.addText(data);
   display_follower_count.centerAlignText();
   display_follower_count.font = bold_font;
-  display_follower_count.minimumScaleFactor = 0.6;
+  display_follower_count.minimumScaleFactor = 0.8;
   display_follower_count.textColor = font_color;
 
   if (show_username) {
@@ -572,14 +652,72 @@ async function createSmallWidgetSingle(platform, show_username = true) {
     let display_username = small_widget_single.addText("@" + getUsername(platform));
     display_username.centerAlignText();
     display_username.font = small_font;
-    display_username.minimumScaleFactor = 0.8;
+    display_username.minimumScaleFactor = 0.4;
     display_username.textColor = font_color;
   }
+
+  small_widget_single.url = getProfileUrl(platform);
 
   return small_widget_single;
 }
 
 // Widget small, multiple
+async function createSmallWidgetMultiple(platforms, show_username = true) {
+  var small_widget_multiple = new ListWidget();
+
+  // set background and font color defaults
+  let bg = ["color", BACKGROUND_COLOR];
+  let font_color = TEXT_COLOR;
+  let icon_version = "white";
+
+  // set background color
+  small_widget_multiple.backgroundColor = BACKGROUND_COLOR;
+
+  // Determine font size based on number of items
+  let item_num = platforms.length;
+  let font_size = 20 - item_num;;
+  let followers_count_font = Font.blackSystemFont(font_size);
+
+  // get platforms
+  for (platform of platforms) {
+    var widget_stack = small_widget_multiple.addStack();
+    widget_stack.layoutHorizontally();
+
+    widget_stack.setPadding(2,0,2,0);
+
+    var img = await getImageFor(platform, icon_version);
+    var widget_image = widget_stack.addImage(img);
+    widget_image.tintColor = TEXT_COLOR;
+    widget_image.imageSize = new Size(font_size, font_size);
+    widget_image.centerAlignImage();
+
+    widget_stack.addSpacer(4+(0.4*item_num));
+
+    // get and display follower count for specific platform
+    let data = await getData(platform, HIDE_FOLLOWERS_LABEL);
+    let display_follower_count = widget_stack.addText(data);
+    display_follower_count.leftAlignText();
+    display_follower_count.font = followers_count_font;
+    display_follower_count.textColor = font_color;
+
+    // display username
+    /**
+    if (show_username) {
+      //widget_stack.addSpacer();
+      let display_username = widget_stack.addText(" (@" + getUsername(platform) + ")");
+      display_username.leftAlignText();
+      display_username.font = thin_font;
+      display_username.minimumScaleFactor = 0.8;
+      display_username.textColor = font_color;
+    }
+    **/
+
+    // link stack to profile url
+    widget_stack.url = getProfileUrl(platform);
+  }
+
+  return small_widget_multiple;
+}
 
 // Widget medium, single
 
@@ -602,20 +740,29 @@ let widget = await createDefaultWidget("Please fill in config.");
 // Widget Single or widget multiple?
 if (display_mode == "error"){
   // display_mode == false => platform not found.
-  widget = await createErrorWidget("Platform not found.", "Check widget parameters.");
+  widget = await createErrorWidget("Error", "Check widget parameters.");
 } else if (display_mode.length > 1 || display_mode.includes("all")){
   //more than one platform to show
+  let platforms = [];
+  let available_platforms = ["twitter", "mastodon", "instagram", "facebook", "youtube"];
+  if (display_mode.includes("all")) {
+    platforms = available_platforms;
+  } else {
+    platforms = display_mode;
+  }
+
   switch (widget_size){
     case "large":
-      // large single widget
+      // large multi widget
 
       break;
     case "medium":
-      // medium single widget
+      // medium multi widget
 
       break;
     default:
-      // small single widget (or "null")
+      // small multi widget (or "null")
+      widget = await createSmallWidgetMultiple(platforms, !HIDE_USERNAME);
   }
 } else {
   // only one platform to show
@@ -633,7 +780,7 @@ if (display_mode == "error"){
       break;
     default:
       // small single widget (or "null")
-      widget = await createSmallWidgetSingle(platform);
+      widget = await createSmallWidgetSingle(platform, !HIDE_USERNAME);
   }
 }
 
