@@ -6,7 +6,7 @@
 
 // ### INFO: WIDGET PARAMETERS ###
 // parameters are seperated by a semicolon (";" or "; ").
-// example widget parameter strings: "display:twitter", "display:twitter,instagram; instagram:aluhutt.jpg"
+// example widget parameter strings: "display:twitter", "display:twitter,instagram; instagram:aluhutt.jpg", "display:twitter; hidefollowers:true"
 //
 //
 // OPTIONS:
@@ -19,21 +19,26 @@
 //   prefixes: network names ("twitter", "mastodon", "instagram", "facebook", "youtube")
 //   value: your username (without a leading "@")
 //   examples: "display:twitter; twitter:aluhutt", "mastodon:jannis@hutt.social", "display:all; mastodon:jannis@hutt.social; twitter:aluhutt"
-
+//
+// - hide "Followers" / "Subscribers" label (optional; default: set below)
+//   prefix: "hidelabel"
+//   possible values: "true", "false"
+//   examples: "hidelabel:true", "hidelabel" (interpreted like hidelabel:true), "hidelabel:false"
+// 
 // ####### SETUP #######
 // Store Cache File locally or in iCloud Drive?
 const STORE_CACHE = "icloud"; // options: icloud, local
 
 // Default usernames
 // (can be overwritten by widget parameters (see above))
-var twitter = "jankortemdb";
-var mastodon = "jankorte@social.linksfraktion.de";
-var instagram = "jankorte77";
-var facebook = "jankortemdb";
-var youtube = "jankortemdb";
+var twitter = "linksfraktion";
+var mastodon = "linksfraktion@social.linksfraktion.de";
+var instagram = "linksfraktion";
+var facebook = "linksfraktion";
+var youtube = "linksfraktion";
 
 // Append "Followers" or "Subscribers" behind the number?
-const HIDE_FOLLOWERS_LABEL = true;
+var hide_followers_label = true;
 
 // Hide username in the widgets?
 const HIDE_USERNAME = false;
@@ -355,7 +360,30 @@ async function loadFacebookFans(user) {
 }
 
 async function loadYouTubeSubscribers(user) {
-  return 1234;
+	// 1. get list of running invidious instances
+  let instance_api_url = "https://api.invidious.io/instances.json?pretty=1&sort_by=health,api,users";
+  let request = new Request(instance_api_url);
+  let data = await request.loadJSON();
+
+  // 2. select random, sufficiently healthy instance
+  let random_int = Math.floor(Math.random()*7); // random integer between 0-7
+  let selected_instance_domain = data[random_int][0];
+  let api_url = "https://" + selected_instance_domain;
+  
+  // 3. search for channels with that username
+  let request_cid_url = api_url + "/api/v1/search?type=channel&q=" + encodeURI(user) + "&fields=authorId";
+  
+  request = new Request(request_cid_url);
+  data = await request.loadJSON();
+  let cid = data[0].authorId;
+
+  // 4. get subscription count from instance api
+  let request_subscribers_url = api_url + "/api/v1/channels/" + cid + "?fields=subCount";
+  
+  request = new Request(request_subscribers_url);
+  data = await request.loadJSON();
+
+  return data.subCount;
 }
 
 async function getData(platform, hide_followers) {
@@ -480,6 +508,20 @@ async function getData(platform, hide_followers) {
 let parameters = await args.widgetParameter;
 if (!parameters){
   parameters = "display:all";
+}
+
+if parameters.includes("hidelabel") {
+  let regex = /hidelabel\:([\w\d]+)[\;\s]*|/gi;
+  let value = regex.exec(parameters);
+  
+  if (value[1] == "true" || value[1] == "1" || value[2] == "hidelabel") {
+    hide_followers_label = true;
+  }
+
+  if (value[1] == "false" || value[1] == "0") {
+    hide_followers_label = false;
+  }
+
 }
 
 let display_mode = getDisplayParameters(parameters);
@@ -640,7 +682,7 @@ async function createSmallWidgetSingle(platform, show_username = true) {
   small_widget_single.addSpacer(10);
 
   // get and display follower count for specific platform
-  let data = await getData(platform, HIDE_FOLLOWERS_LABEL);
+  let data = await getData(platform, hide_followers_label);
   let display_follower_count = small_widget_single.addText(data);
   display_follower_count.centerAlignText();
   display_follower_count.font = bold_font;
@@ -694,7 +736,7 @@ async function createSmallWidgetMultiple(platforms, show_username = true) {
     widget_stack.addSpacer(4+(0.4*item_num));
 
     // get and display follower count for specific platform
-    let data = await getData(platform, HIDE_FOLLOWERS_LABEL);
+    let data = await getData(platform, hide_followers_label);
     let display_follower_count = widget_stack.addText(data);
     display_follower_count.leftAlignText();
     display_follower_count.font = followers_count_font;
