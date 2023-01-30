@@ -510,7 +510,7 @@ if (!parameters){
   parameters = "display:all";
 }
 
-if parameters.includes("hidelabel") {
+if (parameters.includes("hidelabel")) {
   let regex = /hidelabel\:([\w\d]+)[\;\s]*|/gi;
   let value = regex.exec(parameters);
   
