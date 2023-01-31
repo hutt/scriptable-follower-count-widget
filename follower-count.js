@@ -31,11 +31,11 @@ const STORE_CACHE = "icloud"; // options: icloud, local
 
 // Default usernames
 // (can be overwritten by widget parameters (see above))
-var twitter = "aluhutt";
-var mastodon = "jannis@hutt.social";
-var instagram = "aluhutt.jpg";
-var facebook = "linksfraktion";
-var youtube = "linksfraktion";
+var twitter = "tagesschau";
+var mastodon = "tagesschau@mastodon.social";
+var instagram = "tagesschau";
+var facebook = "tagesschau";
+var youtube = "tagesschau";
 
 // Append "Followers" or "Subscribers" behind the number?
 var hide_followers_label = true;
@@ -330,7 +330,7 @@ async function loadTwitterFollowers(user) {
   for (let i = 0; i < 3; i++) {
     followers = regex.exec(html)[1];
   }
-  followers = followers.replace(/\,/g, "");
+  followers = followers.replace(/\,|\./g, "");
   followers = parseInt(followers);
 
   return followers;
@@ -375,8 +375,29 @@ async function loadInstagramFollowers(user) {
   return followers;
 }
 
-async function loadFacebookFans(user) {
-  return 1234;
+async function loadFacebookLikes(user) {
+  // requesting data
+  let url = "https://www.facebook.com/plugins/page.php?href=https%3A%2F%2Fwww.facebook.com%2F";
+  url += encodeURI(user);
+  //url += "&tabs=info&width=340&height=130&small_header=false&adapt_container_width=false&hide_cover=true&show_facepile=false&appId";
+  url += "&amp;amp;tabs=info&amp;amp;width=340&amp;amp;height=130&amp;amp;small_header=false&amp;amp;adapt_container_width=false&amp;amp;hide_cover=true&amp;amp;show_facepile=false&amp;amp;appId&amp;amp;_fb_noscript=1";
+  
+  let request = new Request(url);
+  request.headers = {
+    "User-Agent":
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 13_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Mobile/15E148 Safari/604.1",
+  };
+  
+  let wv = new WebView();
+  await wv.loadRequest(request);
+  let html = await wv.getHTML();
+  let regex = /\<div\sclass\=\"_1drq\"[\s\w\=\"\-\:\;]*\>([\d\,\.]+)/gi;
+
+  let likes = regex.exec(html)[1];
+  likes = likes.replace(/\,|\./g, "");
+  likes = parseInt(likes);
+
+  return likes;
 }
 
 async function loadYouTubeSubscribers(user) {
@@ -465,7 +486,7 @@ async function getData(platform, hide_followers) {
           data = await loadInstagramFollowers(instagram);
           break;
         case "facebook":
-          data = await loadFacebookFans(facebook);
+          data = await loadFacebookLikes(facebook);
           break;
         case "youtube":
           data = await loadYouTubeSubscribers(youtube);
@@ -498,7 +519,7 @@ async function getData(platform, hide_followers) {
         data = await loadInstagramFollowers(instagram);
         break;
       case "facebook":
-        data = await loadFacebookFans(facebook);
+        data = await loadFacebookLikes(facebook);
         break;
       case "youtube":
         data = await loadYouTubeSubscribers(youtube);
