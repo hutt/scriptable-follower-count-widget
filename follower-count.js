@@ -24,6 +24,7 @@
 //   prefix: "hidelabel"
 //   possible values: "true", "false"
 //   examples: "hidelabel:true", "hidelabel" (interpreted like hidelabel:true), "hidelabel:false"
+//
 // 
 // ####### SETUP #######
 // Store Cache File locally or in iCloud Drive?
@@ -31,11 +32,11 @@ const STORE_CACHE = "icloud"; // options: icloud, local
 
 // Default usernames
 // (can be overwritten by widget parameters (see above))
-var twitter = "tagesschau";
-var mastodon = "tagesschau@mastodon.social";
-var instagram = "tagesschau";
-var facebook = "tagesschau";
-var youtube = "tagesschau";
+var twitter = "jankortemdb";
+var mastodon = "jankorte@social.linksfraktion.de";
+var instagram = "jankorte77";
+var facebook = "jankortemdb";
+var youtube = "jankortemdb";
 
 // Append "Followers" or "Subscribers" behind the number?
 var hide_followers_label = true;
@@ -141,7 +142,7 @@ async function writeDataToCache(data) {
 async function getDataFromCache() {
   await fm.downloadFileFromiCloud(path);
   data = await JSON.parse(fm.readString(path));
-  console.log("fetching data from file was successful");
+  console.log("fetching data from cache file was successful");
   return data;
 }
 
@@ -159,7 +160,7 @@ function configFileFirstInit() {
       timestamp: outdated_timestamp,
       platform: "twitter",
       username: twitter,
-      followers: 0
+      followers: -2
     });
   }
 
@@ -169,7 +170,7 @@ function configFileFirstInit() {
       timestamp: outdated_timestamp,
       platform: "mastodon",
       username: mastodon,
-      followers: 0
+      followers: -2
     });
   }
 
@@ -179,7 +180,7 @@ function configFileFirstInit() {
       timestamp: outdated_timestamp,
       platform: "instagram",
       username: instagram,
-      followers: 0
+      followers: -2
     });
   }
 
@@ -189,7 +190,7 @@ function configFileFirstInit() {
       timestamp: outdated_timestamp,
       platform: "facebook",
       username: facebook,
-      followers: 0
+      followers: -2
     });
   }
 
@@ -199,7 +200,7 @@ function configFileFirstInit() {
       timestamp: outdated_timestamp,
       platform: "youtube",
       username: youtube,
-      followers: 0
+      followers: -2
     });
   }
   writeDataToCache(data);
@@ -464,7 +465,7 @@ async function getData(platform, hide_followers) {
   // Check if data is cached
   if (found_object_index != -1){
     // data is cached.
-    console.log("getData(): requested data is cached.");
+    console.log("getData(): requested " + platform + " data (@" + username + ") is cached.");
 
     // now get timestamp 
     let found_object = from_cache.cached[found_object_index];
@@ -473,7 +474,7 @@ async function getData(platform, hide_followers) {
     // if time stamp is too old, load data:
     if (Math.floor((Date.now() - timestamp) / 1000) >= CACHE_TTL) {
       // data is cached but too old. loading new data.
-      console.log("getData(): cached data too old. loading new data.");
+      console.log("getData(): cached " + platform + " (@" + username + ") data too old. loading new data.");
       // call right function to load followers
       switch (platform) {
         case "twitter":
@@ -497,15 +498,15 @@ async function getData(platform, hide_followers) {
       found_object.followers = await data;
       from_cache.cached[found_object_index] = found_object;
       writeDataToCache(from_cache);
-      console.log("wrote new " + platform + " followers count to cache: " + data);
+      console.log("wrote new " + platform + " followers count for @" + username + " to cache: " + data);
     } else {
       // time stamp was not too old. load from cache.
-      console.log("cached data still valid.")
+      console.log("cached " + platform + " data still valid.")
       data = found_object.followers;
     }
   } else {
     // requested data not found in cache. loading...
-    console.log("getData(): requested data is not cached.");
+    console.log("getData(): requested " + platform + " (" + username + ") data is not cached.");
 
     // call right function to load followers
     switch (platform) {
@@ -537,10 +538,11 @@ async function getData(platform, hide_followers) {
   }
 
   // Format Data
-  let data_string = data.toLocaleString(); 
+  let data_string = data.toLocaleString();
   if (!hide_followers) {
     data_string = data_string + " " + followers_name;
   }
+  
   return data_string;
 }
 
@@ -877,3 +879,5 @@ if (config.runsInWidget) {
 }
 
 Script.complete();
+
+// Ende.
