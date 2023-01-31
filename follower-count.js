@@ -31,9 +31,9 @@ const STORE_CACHE = "icloud"; // options: icloud, local
 
 // Default usernames
 // (can be overwritten by widget parameters (see above))
-var twitter = "linksfraktion";
-var mastodon = "linksfraktion@social.linksfraktion.de";
-var instagram = "linksfraktion";
+var twitter = "aluhutt";
+var mastodon = "jannis@hutt.social";
+var instagram = "aluhutt.jpg";
 var facebook = "linksfraktion";
 var youtube = "linksfraktion";
 
@@ -352,7 +352,27 @@ async function loadMastodonFollowers(user) {
 }
 
 async function loadInstagramFollowers(user) {
-  return 1234;
+	// requesting data
+	// building request url
+  let url = "https://www.instagram.com/";
+  url += encodeURI(user);
+  url += "/?__a=1&__d=dis";
+  
+  let request = new Request(url);
+  request.headers = {
+    "User-Agent":
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 13_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Mobile/15E148 Safari/604.1",
+  };
+  let data = await request.loadJSON();
+  
+  let followers = -1;
+  if (data.status == "fail") {
+    console.error("Instagram API: " + data.message);
+  } else {
+    followers = data.graphql.user.edge_followed_by.count;
+  }
+
+  return followers;
 }
 
 async function loadFacebookFans(user) {
