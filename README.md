@@ -17,7 +17,7 @@ A simple widget to display social media follower counts using [simonbs](https://
 | ------- | --------- |
 | ![Screenshot: small widgets by day](screenshots/widgets_small_daytime.png) | ![Screenshot: small widgets by night](screenshots/widgets_small_nighttime.png) |
 
-| use parameters to display multiple accounts | `display:twitter; twitter:aluhutt` |
+| use parameters to display multiple accounts | parameters for the widget on the top right (display twitter & override default twitter account with "aluhutt": `display:twitter; twitter:aluhutt` |
 | ------------------------------------------- | ---------------------------------- |
 | ![Screenshot: multiple small twitter widgets](screenshots/multiple_small_twitter_widgets.png) | ![Screenshot: multiple small twitter widget parameters](screenshots/multiple_small_twitter_widgets_parameters.png) |
 
