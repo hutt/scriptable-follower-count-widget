@@ -17,6 +17,10 @@ A simple widget to display social media follower counts using [simonbs](https://
 | ------- | --------- |
 | ![Screenshot: small widgets by day](screenshots/widgets_small_daytime.png) | ![Screenshot: small widgets by night](screenshots/widgets_small_nighttime.png) |
 
+| use parameters to display multiple accounts | `display:twitter; twitter:aluhutt` |
+| ------------------------------------------- | ---------------------------------- |
+| ![Screenshot: multiple small twitter widgets](screenshots/multiple_small_twitter_widgets.png) | ![Screenshot: multiple small twitter widget parameters](screenshots/multiple_small_twitter_widgets_parameters.png) |
+
 # Installation
 1. install [scriptable](https://scriptable.app)
 2. copy follower-count.js to your scriptable folder in iCloud or copy the code directly into a new script in the scriptable app
