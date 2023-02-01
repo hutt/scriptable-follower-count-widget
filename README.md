@@ -12,8 +12,9 @@ A simple widget to display social media follower counts using [simonbs](https://
 * see a graph of your followers over time (in development)
 
 # Screenshots
-![Screenshot: small widgets by day](screenshots/widgets_small_daytime.png)
-![Screenshot: small widgets by night](screenshots/widgets_small_nighttime.png)
+| daytime | nighttime |
+| ------- | --------- |
+| ![Screenshot: small widgets by day](screenshots/widgets_small_daytime.png) | ![Screenshot: small widgets by night](screenshots/widgets_small_nighttime.png) |
 
 # Installation
 1. install [scriptable](https://scriptable.app)
