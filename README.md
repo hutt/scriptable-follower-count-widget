@@ -9,6 +9,7 @@ A simple widget to display social media follower counts using [simonbs](https://
 	* Facebook
 	* YouTube
 * create widgets for multiple accounts on the same platform using parameters
+* cache follower counts and use old values if there's an api error (which may happen more often, since every platform except Mastodon closed their public apis)
 * see a graph of your followers over time (in development)
 
 # Screenshots
