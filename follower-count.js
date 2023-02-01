@@ -30,9 +30,6 @@
 // Store Cache File locally or in iCloud Drive?
 const STORE_CACHE = "icloud"; // options: icloud, local
 
-// Refresh interval for the widgets
-const REFRESH_INTERVAL = 5; // in minutes
-
 // Default usernames
 // (can be overwritten by widget parameters (see above))
 var twitter = "linksfraktion";
@@ -42,13 +39,23 @@ var facebook = "linksfraktion";
 var youtube = "linksfraktion";
 
 // Append "Followers" or "Subscribers" behind the number?
-var hide_followers_label = true;
+const HIDE_FOLLOWERS_LABEL = true;
 
 // Hide username in the widgets?
 const HIDE_USERNAME = false;
 
+// Open social media profile when clicking widget?
+const OPEN_PROFILE = true;
+
+// Get last follower count from graph cache when there's an API error?
+const ON_API_ERROR_GET_FROM_GRAPH_CACHE = true;
+
 // In which interval do you want to query your follower count?
-const CACHE_TTL = 3600; // in seconds. 3600s = 1h
+const CACHE_TTL = 300; // in seconds. 3600s = 1h
+
+// How long do you want to store data for the follower graphs
+// the long the number, the bigger gets graph-cache.json
+const GRAPH_CACHE_MAX = 30; // in days.
 
 // Styling
 const BACKGROUND_COLOR = Color.dynamic(
@@ -60,6 +67,10 @@ const TEXT_COLOR = Color.dynamic(
   new Color("#333333"), // Text color for the light theme
   new Color("#ffffff")  // Text color for the dark theme
 );
+
+// Refresh interval for the widgets
+const REFRESH_INTERVAL = 5; // in minutes
+
 // ####### END SETUP #######
 // don't touch anything under here, unless you know what you're doing
 
@@ -68,7 +79,19 @@ const SOCIAL_ICONS_FOLDER_URL = "https://raw.githubusercontent.com/hutt/scriptab
 const SOCIAL_ICONS_FILENAMES = ["facebook", "facebook_white", "instagram", "instagram_white", "mastodon", "mastodon_white", "twitter", "twitter_white", "youtube", "youtube_white"];
 const REQUEST_TIMEOUT = 30; // how many seconds until timeout?
 
+// Variable to detect first run and refresh immidiately afterwards
+var first_run = false;
+
+// create hidefollowers variable out of constant
+var hidefollowers_label = HIDE_FOLLOWERS_LABEL;
+
 // HELPER FUNCTIONS
+// Substract one day of a date
+function subtractDays(date, days) {
+  date.setDate(date.getDate() - days);
+  return date;
+}
+
 // Validate Parameters
 function validateParameters(parameters) {
   let check_for = ["display", "twitter", "mastodon", "instagram", "facebook", "youtube"];
@@ -86,13 +109,13 @@ function getDisplayParameters(parameters) {
   let platforms = null;
   if (validateParameters(parameters)){
     // parameters are valid
-    let available_platforms = ["twitter", "mastodon", "instagram", "facebook", "youtube", "all"];
+    let availableplatforms = ["twitter", "mastodon", "instagram", "facebook", "youtube", "all"];
     let regex = /display:([\w,]+)[;\s]*/gi;
     let parameter_string = regex.exec(parameters);
     let parameter_value = parameter_string[1];
     platforms = parameter_value.split(",");
     for (let platform of platforms){
-      if (!available_platforms.includes(platform)){
+      if (!availableplatforms.includes(platform)){
         platforms = "error";
       }
     }
@@ -143,11 +166,108 @@ async function writeDataToCache(data) {
   console.log("saved new data to file");
 }
 
+async function writeDataToGraphCache(data) {
+  fm.writeString(graph_cache_path, JSON.stringify(data));
+  console.log("saved new data to graph cache file");
+}
+
 async function getDataFromCache() {
   await fm.downloadFileFromiCloud(path);
   data = await JSON.parse(fm.readString(path));
   console.log("fetching data from cache file was successful");
   return data;
+}
+
+async function getDataFromGraphCache() {
+  await fm.downloadFileFromiCloud(graph_cache_path);
+  data = await JSON.parse(fm.readString(graph_cache_path));
+  console.log("fetching data from cache file was successful");
+  return data;
+}
+
+async function addToGraphCache(platform, username, followers) {
+  let graph_cache = await getDataFromGraphCache();
+
+  // is the platform created as an object yet?
+  if (typeof graph_cache[platform] == "undefined"){
+    // not an object. create one.
+    graph_cache[platform] = new Object();
+  }
+
+  // does the user inside the platform object exist yet?
+  if (typeof graph_cache[platform][username] == "undefined"){
+    // not an array. create one.
+    graph_cache[platform][username] = new Array();
+  }
+
+  // create new entry
+  let graph_entry = new Object();
+  graph_entry.timestamp = Date.now();
+  graph_entry.followers = followers;
+  graph_cache[platform][username].push(graph_entry);
+
+  writeDataToGraphCache(graph_cache);
+
+  // log to console
+  let datetime = new Date(graph_entry.timestamp);
+  datetime_string = datetime.getHours() + ":" + datetime.getMinutes() + ":" + datetime.getSeconds();
+  console.log("added new entry for " + platform + " (@" + username + ") at " + datetime_string + " to graph cache");
+}
+
+async function getFollowersFromGraphCache(platform, username) {
+  let followers = -1;
+
+  if (ON_API_ERROR_GET_FROM_GRAPH_CACHE) {
+    let data = await getDataFromGraphCache();
+    let last_value = data[platform][username].pop();
+    // check if data is available
+    if (typeof last_value != "undefined"){
+      // data found in graph cache.
+      followers = last_value.followers;
+    } else {
+      // data not found in graph cache. output api error.
+      followers = -1;
+    }
+
+  }
+
+  return followers;
+}
+
+async function cleanUpGraphCache() {
+  var graph_cache = await getDataFromGraphCache();
+
+  var now = new Date();
+  var last_acceptable_timestamp = subtractDays(now, GRAPH_CACHE_MAX);
+  var yesterday_timestamp = subtractDays(now, 1);
+
+  // iterate through platforms
+  for (let i = 0; i < graph_cache.length-1; i++) {
+
+    // iterate through accounts
+    for (let j = 0; j < graph_cache[i].length-1; j++) {
+
+      // iterate through data
+      for (let k = 0; k < graph_cache[i][j].length-1; k++) {
+        let data = graph_cache[i][j][k];
+
+        // keep only one record if it's older than 24h
+        if (data.timestamp < yesterday_timestamp) {
+          // look if there is another record from that day
+
+          // if not, delete this record.
+        }
+
+        // delete records older than last_acceptable_timestamp
+        if (data.timestamp < last_acceptable_timestamp) {
+          graph_cache[i][j].splice(i,1);
+        }
+      }
+    }
+  }
+
+  // write cleaned up cache file to cache
+  writeDataToCache(graph_cache);
 }
 
 function configFileFirstInit() {
@@ -207,7 +327,13 @@ function configFileFirstInit() {
       followers: -2
     });
   }
+  first_run = true;
+  // write first data to cache (followers = -1)
   writeDataToCache(data);
+
+  //build graph cache file
+  let graph_entry = new Object();
+  writeDataToGraphCache(graph_entry);
 }
 
 // get username
@@ -293,6 +419,48 @@ function getProfileUrl(platform) {
   return url;
 }
 
+// PARAMETERS
+// Get parameters; if none, set "display:all"
+let parameters = await args.widgetParameter;
+if (!parameters){
+  parameters = "display:all";
+}
+
+if (parameters.includes("hidelabel")) {
+  let regex = /hidelabel\:([\w\d]+)[\;\s]*|/gi;
+  let value = regex.exec(parameters);
+  
+  if (value[1] == "true" || value[1] == "1" || value[2] == "hidelabel") {
+    hidefollowers_label = true;
+  }
+
+  if (value[1] == "false" || value[1] == "0") {
+    hidefollowers_label = false;
+  }
+
+}
+
+let display_mode = getDisplayParameters(parameters);
+
+// check if the platform named after "display:" ist valid
+if (display_mode == "error") {
+  console.error("specified platform not found (or you forgot a \";\" to seperate the display parameter from a username.");
+} else {
+  console.log("showing follower count for the following platform(s): " + display_mode.join(", "));
+}
+
+// social media username parameters
+let platforms = ["twitter", "mastodon", "instagram", "facebook", "youtube"];
+for (let i = platforms.length - 1; i >= 0; i--) {
+  // if social network name is found in parameter string, overwrite username variable with matched username string
+  if (parameters.includes(platforms[i] + ":")) {
+    let newusername = getUsernameParameters(platforms[i], parameters);
+    setUsername(platforms[i], newusername);
+    console.log(platforms[i] + " username overwritten: " + newusername);
+  }
+}
+
+// helper function to create background gradient
 function createLinearGradient(colors) {
     let gradient = new LinearGradient();
 
@@ -313,6 +481,7 @@ function createLinearGradient(colors) {
     return gradient;
 }
 
+// LOAD functions
 // Load Twitter Followers
 async function loadTwitterFollowers(user) {
   // requesting data
@@ -341,6 +510,7 @@ async function loadTwitterFollowers(user) {
   return followers;
 }
 
+// Load Mastodon Followers
 async function loadMastodonFollowers(user) {
 	// requesting data
 	// building request url
@@ -358,6 +528,7 @@ async function loadMastodonFollowers(user) {
   return followers;
 }
 
+// Load Instagram Followers
 async function loadInstagramFollowers(user) {
 	// requesting data
 	// building request url
@@ -384,6 +555,7 @@ async function loadInstagramFollowers(user) {
   return followers;
 }
 
+// Load Facebook Likes
 async function loadFacebookLikes(user) {
   // requesting data
   let url = "https://www.facebook.com/plugins/page.php?href=https%3A%2F%2Fwww.facebook.com%2F";
@@ -411,6 +583,7 @@ async function loadFacebookLikes(user) {
   return likes;
 }
 
+// Load YouTube Subscribers
 async function loadYouTubeSubscribers(user) {
 	// 1. get list of running invidious instances
   let instance_api_url = "https://api.invidious.io/instances.json?pretty=1&sort_by=health,api,users";
@@ -431,24 +604,34 @@ async function loadYouTubeSubscribers(user) {
   request.timeoutInterval = REQUEST_TIMEOUT;
 
   data = await request.loadJSON();
-  let cid = data[0].authorId;
 
-  // 4. get subscription count from instance api
-  let request_subscribers_url = api_url + "/api/v1/channels/" + cid + "?fields=subCount";
-  
-  request = new Request(request_subscribers_url);
-  request.timeoutInterval = REQUEST_TIMEOUT;
+  let move_on = true;
+  // check if api is working
+  if (typeof data[0] != "object") {
+    move_on = false;
+  }
 
-  data = await request.loadJSON();
-  
-  if (typeof data != "undefined"){
-    subscribers = data.subCount;
+  if (move_on) {
+    let cid = data[0].authorId;
+
+    // 4. get subscription count from instance api
+    let request_subscribers_url = api_url + "/api/v1/channels/" + cid + "?fields=subCount";
+    
+    request = new Request(request_subscribers_url);
+    request.timeoutInterval = REQUEST_TIMEOUT;
+
+    data = await request.loadJSON();
+    
+    if (typeof data != "undefined"){
+      subscribers = data.subCount;
+    }
   }
 
   return subscribers;
 }
 
-async function getData(platform, hide_followers) {
+// Get requested data for a specific platform.
+async function getData(platform) {
   let data = 0;
   var username = null;
 
@@ -518,11 +701,57 @@ async function getData(platform, hide_followers) {
       found_object.followers = await data;
       from_cache.cached[found_object_index] = found_object;
       writeDataToCache(from_cache);
+
+      // add data to graph cache file, if there is no api error
+      if (found_object.followers >= 0) {
+        addToGraphCache(platform, username, found_object.followers);
+      }
+
       console.log("wrote new " + platform + " followers count for @" + username + " to cache: " + data);
     } else {
-      // time stamp was not too old. load from cache.
-      console.log("cached " + platform + " data still valid.")
-      data = found_object.followers;
+      // time stamp was not too old. 
+
+      //check if last value was an error code (< 0)
+      if (found_object.followers < 0) {
+        // last cached value contained an error. try to load again.
+        console.log("getData(): cached " + platform + " (@" + username + ") data could not be loaded the last time. loading new data.");
+        // call right function to load followers
+        switch (platform) {
+          case "twitter":
+            data = await loadTwitterFollowers(twitter);
+            break;
+          case "mastodon":
+            data = await loadMastodonFollowers(mastodon);
+            break;
+          case "instagram":
+            data = await loadInstagramFollowers(instagram);
+            break;
+          case "facebook":
+            data = await loadFacebookLikes(facebook);
+            break;
+          case "youtube":
+            data = await loadYouTubeSubscribers(youtube);
+            break;
+        }
+        // now replace data in cache file
+        found_object.timestamp = Date.now();
+        found_object.followers = await data;
+        from_cache.cached[found_object_index] = found_object;
+        writeDataToCache(from_cache);
+
+        // add data to graph cache file, if there is no api error
+        if (found_object.followers >= 0) {
+          addToGraphCache(platform, username, found_object.followers);
+        } else {
+          // api error. try to get old data from graph cache
+          data = await getFollowersFromGraphCache(platform, username);
+          console.log(platform + " api error. tried to get old data from graph cache: " + data);
+        }
+      } else {
+        // everything fine with the last cached value. load from cache.
+        console.log("cached " + platform + " data still valid.")
+        data = found_object.followers;
+      }
     }
   } else {
     // requested data not found in cache. loading...
@@ -555,56 +784,38 @@ async function getData(platform, hide_followers) {
 
     from_cache.cached.push(new_data_object);
     writeDataToCache(from_cache);
+
+    // add data to graph cache file, if there is no api error
+    if (new_data_object.followers >= 0) {
+      addToGraphCache(platform, username, new_data_object.followers);
+    } else {
+      // api error. try to get old data from graph cache
+      data = await getFollowersFromGraphCache(platform, username);
+      console.log(platform + " api error. tried to get old data from graph cache: " + data);
+    }
   }
 
-  // Format Data
-  let data_string = data.toLocaleString();
-  if (!hide_followers) {
-    data_string = data_string + " " + followers_name;
+  let data_string = "";
+  if (data < 0) {
+    // Error occured. Display error message
+    switch (data) {
+      case -1:
+        data_string = "API Error";
+        break;
+      case -2:
+        data_string = "loading...";
+        break;
+    }
+  } else {
+    // Data without error
+    // Format Data
+    data_string = data.toLocaleString();
+    if (!hidefollowers_label) {
+      data_string = data_string + " " + followers_name;
+    }
   }
   
   return data_string;
-}
-
-// PARAMETERS
-// Get parameters; if none, set "display:all"
-let parameters = await args.widgetParameter;
-if (!parameters){
-  parameters = "display:all";
-}
-
-if (parameters.includes("hidelabel")) {
-  let regex = /hidelabel\:([\w\d]+)[\;\s]*|/gi;
-  let value = regex.exec(parameters);
-  
-  if (value[1] == "true" || value[1] == "1" || value[2] == "hidelabel") {
-    hide_followers_label = true;
-  }
-
-  if (value[1] == "false" || value[1] == "0") {
-    hide_followers_label = false;
-  }
-
-}
-
-let display_mode = getDisplayParameters(parameters);
-
-// check if the platform named after "display:" ist valid
-if (display_mode == "error") {
-  console.error("specified platform not found (or you forgot a \";\" to seperate the display parameter from a username.");
-} else {
-  console.log("showing follower count for the following platform(s): " + display_mode.join(", "));
-}
-
-// social media username parameters
-let platforms = ["twitter", "mastodon", "instagram", "facebook", "youtube"];
-for (let i = platforms.length - 1; i >= 0; i--) {
-  // if social network name is found in parameter string, overwrite username variable with matched username string
-  if (parameters.includes(platforms[i] + ":")) {
-    let new_username = getUsernameParameters(platforms[i], parameters);
-    setUsername(platforms[i], new_username);
-    console.log(platforms[i] + " username overwritten: " + new_username);
-  }
 }
 
 // Get Widget Size
@@ -622,16 +833,19 @@ if (STORE_CACHE == "local") {
   console.error('Please specify where to store the cache file ("local" or "icloud").');
 }
 
+// FILE HANDLING
 // Set dirs and path; create new cache directory if not existent
 let dir = fm.joinPath(fm.documentsDirectory(), "follower-count");
-let icons_dir = fm.joinPath(dir, "icons");
-let path = fm.joinPath(dir, "follower-count-cache.json");
 if (!fm.fileExists(dir)) {
   fm.createDirectory(dir);
 }
 
+let path = fm.joinPath(dir, "follower-count-cache.json");
+let graph_cache_path = fm.joinPath(dir, "graph-cache.json");
+
 // ICONS
 // check if there is an icons directory; if not, create it
+let icons_dir = fm.joinPath(dir, "icons");
 if (!fm.fileExists(icons_dir)) {
   fm.createDirectory(icons_dir);
   console.log("created new icons subdirectory.");
@@ -692,7 +906,7 @@ async function createErrorWidget(heading, text = "") {
 
 
 // Widget small, single (only one counter)
-async function createSmallWidgetSingle(platform, show_username = true) {
+async function createSmallWidgetSingle(platform, showusername = true) {
   var small_widget_single = new ListWidget();
 
   // set background and font color defaults
@@ -745,20 +959,20 @@ async function createSmallWidgetSingle(platform, show_username = true) {
   small_widget_single.addSpacer(10);
 
   // get and display follower count for specific platform
-  let data = await getData(platform, hide_followers_label);
+  let data = await getData(platform);
   let display_follower_count = small_widget_single.addText(data);
   display_follower_count.centerAlignText();
   display_follower_count.font = bold_font;
   display_follower_count.minimumScaleFactor = 0.8;
   display_follower_count.textColor = font_color;
 
-  if (show_username) {
+  if (showusername) {
     small_widget_single.addSpacer(1);
-    let display_username = small_widget_single.addText("@" + getUsername(platform));
-    display_username.centerAlignText();
-    display_username.font = small_font;
-    display_username.minimumScaleFactor = 0.8;
-    display_username.textColor = font_color;
+    let displayusername = small_widget_single.addText("@" + getUsername(platform));
+    displayusername.centerAlignText();
+    displayusername.font = small_font;
+    displayusername.minimumScaleFactor = 0.8;
+    displayusername.textColor = font_color;
   }
 
   small_widget_single.url = getProfileUrl(platform);
@@ -767,7 +981,7 @@ async function createSmallWidgetSingle(platform, show_username = true) {
 }
 
 // Widget small, multiple
-async function createSmallWidgetMultiple(platforms, show_username = true) {
+async function createSmallWidgetMultiple(platforms, showusername = true) {
   var small_widget_multiple = new ListWidget();
 
   // set background and font color defaults
@@ -799,7 +1013,7 @@ async function createSmallWidgetMultiple(platforms, show_username = true) {
     widget_stack.addSpacer(4+(0.4*item_num));
 
     // get and display follower count for specific platform
-    let data = await getData(platform, hide_followers_label);
+    let data = await getData(platform);
     let display_follower_count = widget_stack.addText(data);
     display_follower_count.leftAlignText();
     display_follower_count.font = followers_count_font;
@@ -807,13 +1021,13 @@ async function createSmallWidgetMultiple(platforms, show_username = true) {
 
     // display username
     /**
-    if (show_username) {
+    if (showusername) {
       //widget_stack.addSpacer();
-      let display_username = widget_stack.addText(" (@" + getUsername(platform) + ")");
-      display_username.leftAlignText();
-      display_username.font = thin_font;
-      display_username.minimumScaleFactor = 0.8;
-      display_username.textColor = font_color;
+      let displayusername = widget_stack.addText(" (@" + getUsername(platform) + ")");
+      displayusername.leftAlignText();
+      displayusername.font = thin_font;
+      displayusername.minimumScaleFactor = 0.8;
+      displayusername.textColor = font_color;
     }
     **/
 
@@ -836,7 +1050,6 @@ await downloadSocialIcons();
 if (!fm.fileExists(path)) {
   console.log("looks like your first init.");
   configFileFirstInit();
-
 }
 
 // default widget. Gets overwritten in the next code block.
@@ -849,9 +1062,9 @@ if (display_mode == "error"){
 } else if (display_mode.length > 1 || display_mode.includes("all")){
   //more than one platform to show
   let platforms = [];
-  let available_platforms = ["twitter", "mastodon", "instagram", "facebook", "youtube"];
+  let availableplatforms = ["twitter", "mastodon", "instagram", "facebook", "youtube"];
   if (display_mode.includes("all")) {
-    platforms = available_platforms;
+    platforms = availableplatforms;
   } else {
     platforms = display_mode;
   }
@@ -891,7 +1104,13 @@ if (display_mode == "error"){
 
 // Set refresh interval for the widget
 let next_widget_refresh = new Date();
-next_widget_refresh.setMinutes(next_widget_refresh.getMinutes() + REFRESH_INTERVAL);
+if (first_run) {
+  // First run. Refresh widget in 10 seconds.
+  next_widget_refresh.setSeconds(next_widget_refresh.getSeconds() + 10);
+} else {
+  // Not a first run. Refresh widget in $REFRESH_INTERVAL minutes.
+  next_widget_refresh.setMinutes(next_widget_refresh.getMinutes() + REFRESH_INTERVAL);
+}
 widget.refreshAfterDate = next_widget_refresh;
 
 // Check where the script is running
