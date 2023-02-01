@@ -30,13 +30,16 @@
 // Store Cache File locally or in iCloud Drive?
 const STORE_CACHE = "icloud"; // options: icloud, local
 
+// Refresh interval for the widgets
+const REFRESH_INTERVAL = 5; // in minutes
+
 // Default usernames
 // (can be overwritten by widget parameters (see above))
-var twitter = "jankortemdb";
-var mastodon = "jankorte@social.linksfraktion.de";
-var instagram = "jankorte77";
-var facebook = "jankortemdb";
-var youtube = "jankortemdb";
+var twitter = "linksfraktion";
+var mastodon = "linksfraktion@social.linksfraktion.de";
+var instagram = "linksfraktion";
+var facebook = "linksfraktion";
+var youtube = "linksfraktion";
 
 // Append "Followers" or "Subscribers" behind the number?
 var hide_followers_label = true;
@@ -63,7 +66,7 @@ const TEXT_COLOR = Color.dynamic(
 // Social Icons constants
 const SOCIAL_ICONS_FOLDER_URL = "https://raw.githubusercontent.com/hutt/scriptable-follower-count-widget/main/icons/";
 const SOCIAL_ICONS_FILENAMES = ["facebook", "facebook_white", "instagram", "instagram_white", "mastodon", "mastodon_white", "twitter", "twitter_white", "youtube", "youtube_white"];
-const REQUEST_TIMEOUT = 3; // how many seconds until timeout when downloading social icons?
+const REQUEST_TIMEOUT = 30; // how many seconds until timeout?
 
 // HELPER FUNCTIONS
 // Validate Parameters
@@ -115,6 +118,7 @@ async function downloadSocialIcons() {
     if (!fm.fileExists(img_path)) {
       console.log("loading image: " + img + ".png");
       let request = new Request(SOCIAL_ICONS_FOLDER_URL + img + ".png");
+      request.timeoutInterval = REQUEST_TIMEOUT;
       console.log(request);
       image = await request.loadImage();
       fm.writeImage(img_path, image);
@@ -313,13 +317,13 @@ function createLinearGradient(colors) {
 async function loadTwitterFollowers(user) {
   // requesting data
   // let request_url = "https://mobile.twitter.com/" + user;
-  let url = "https://nitter.it/" + user;
-  
+  let url = "https://nitter.net/" + user;
   let request = new Request(url);
   request.headers = {
     "User-Agent":
       "Mozilla/5.0 (iPhone; CPU iPhone OS 13_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Mobile/15E148 Safari/604.1",
   };
+  request.timeoutInterval = REQUEST_TIMEOUT;
   
   let wv = new WebView();
   await wv.loadRequest(request);
@@ -345,9 +349,11 @@ async function loadMastodonFollowers(user) {
   url += "/api/v1/accounts/lookup?acct=";
   url += getMastodonUsernameWithoutInstanceUrl(user);
   
+  let followers = -1;
   let request = new Request(url);
+  request.timeoutInterval = REQUEST_TIMEOUT;
   let data = await request.loadJSON();
-  let followers = data.followers_count;
+  followers = data.followers_count;
 
   return followers;
 }
@@ -364,6 +370,8 @@ async function loadInstagramFollowers(user) {
     "User-Agent":
       "Mozilla/5.0 (iPhone; CPU iPhone OS 13_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Mobile/15E148 Safari/604.1",
   };
+  request.timeoutInterval = REQUEST_TIMEOUT;
+
   let data = await request.loadJSON();
   
   let followers = -1;
@@ -388,13 +396,15 @@ async function loadFacebookLikes(user) {
     "User-Agent":
       "Mozilla/5.0 (iPhone; CPU iPhone OS 13_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Mobile/15E148 Safari/604.1",
   };
+  request.timeoutInterval = REQUEST_TIMEOUT;
   
   let wv = new WebView();
   await wv.loadRequest(request);
   let html = await wv.getHTML();
   let regex = /\<div\sclass\=\"_1drq\"[\s\w\=\"\-\:\;]*\>([\d\,\.]+)/gi;
 
-  let likes = regex.exec(html)[1];
+  let likes = -1;
+  likes = regex.exec(html)[1];
   likes = likes.replace(/\,|\./g, "");
   likes = parseInt(likes);
 
@@ -405,6 +415,7 @@ async function loadYouTubeSubscribers(user) {
 	// 1. get list of running invidious instances
   let instance_api_url = "https://api.invidious.io/instances.json?pretty=1&sort_by=health,api,users";
   let request = new Request(instance_api_url);
+  request.timeoutInterval = REQUEST_TIMEOUT;
   let data = await request.loadJSON();
 
   // 2. select random, sufficiently healthy instance
@@ -415,7 +426,10 @@ async function loadYouTubeSubscribers(user) {
   // 3. search for channels with that username
   let request_cid_url = api_url + "/api/v1/search?type=channel&q=" + encodeURI(user) + "&fields=authorId";
   
+  let subscribers = -1;
   request = new Request(request_cid_url);
+  request.timeoutInterval = REQUEST_TIMEOUT;
+
   data = await request.loadJSON();
   let cid = data[0].authorId;
 
@@ -423,9 +437,15 @@ async function loadYouTubeSubscribers(user) {
   let request_subscribers_url = api_url + "/api/v1/channels/" + cid + "?fields=subCount";
   
   request = new Request(request_subscribers_url);
-  data = await request.loadJSON();
+  request.timeoutInterval = REQUEST_TIMEOUT;
 
-  return data.subCount;
+  data = await request.loadJSON();
+  
+  if (typeof data != "undefined"){
+    subscribers = data.subCount;
+  }
+
+  return subscribers;
 }
 
 async function getData(platform, hide_followers) {
@@ -737,7 +757,7 @@ async function createSmallWidgetSingle(platform, show_username = true) {
     let display_username = small_widget_single.addText("@" + getUsername(platform));
     display_username.centerAlignText();
     display_username.font = small_font;
-    display_username.minimumScaleFactor = 0.4;
+    display_username.minimumScaleFactor = 0.8;
     display_username.textColor = font_color;
   }
 
@@ -819,7 +839,7 @@ if (!fm.fileExists(path)) {
 
 }
 
-// default widget: error. Get overwritten in the next code block.
+// default widget. Gets overwritten in the next code block.
 let widget = await createDefaultWidget("Please fill in config.");
 
 // Widget Single or widget multiple?
@@ -868,6 +888,11 @@ if (display_mode == "error"){
       widget = await createSmallWidgetSingle(platform, !HIDE_USERNAME);
   }
 }
+
+// Set refresh interval for the widget
+let next_widget_refresh = new Date();
+next_widget_refresh.setMinutes(next_widget_refresh.getMinutes() + REFRESH_INTERVAL);
+widget.refreshAfterDate = next_widget_refresh;
 
 // Check where the script is running
 if (config.runsInWidget) {
