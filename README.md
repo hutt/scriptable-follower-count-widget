@@ -1,4 +1,4 @@
-# scriptable-follower-count-widget
+# Follower count widget for Scriptable App (iOS/iPad OS)
 A simple widget to display social media follower counts using [simonbs](https://github.com/simonbs)' app [scriptable](https://scriptable.app).
 
 ## Functionality
