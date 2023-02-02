@@ -45,7 +45,7 @@ const HIDE_FOLLOWERS_LABEL = true;
 const HIDE_USERNAME = false;
 
 // Open social media profile when clicking widget?
-const OPEN_PROFILE = true;
+const OPEN_PROFILE = false;
 
 // Get last follower count from graph cache when there's an API error?
 const ON_API_ERROR_GET_FROM_GRAPH_CACHE = true;
@@ -1055,7 +1055,7 @@ async function createSmallWidgetSingle(platform, showusername = true) {
 
   if (OPEN_PROFILE) {
     // link stack to profile url
-    widget_stack.url = getProfileUrl(platform);
+    small_widget_single.url = getProfileUrl(platform);
   }
 
   return small_widget_single;
