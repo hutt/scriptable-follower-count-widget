@@ -1,6 +1,6 @@
 // Variables used by Scriptable.
 // These must be at the very top of the file. Do not edit.
-// icon-color: blue; icon-glyph: desktop;
+// icon-color: blue; icon-glyph: sort-numeric-up;
 // Social Media Followers Count Widget for Scriptable by Jannis Hutt
 // GitHub Repository: https://github.com/hutt/scriptable-follower-count-widget
 
@@ -83,7 +83,7 @@ const NITTER_INSTANCES = ["nitter.net", "nitter.lacontrevoie.fr", "nitter.pussth
 // Social Icons constants
 const SOCIAL_ICONS_FOLDER_URL = "https://raw.githubusercontent.com/hutt/scriptable-follower-count-widget/main/icons/";
 const SOCIAL_ICONS_FILENAMES = ["facebook", "facebook_white", "instagram", "instagram_white", "mastodon", "mastodon_white", "twitter", "twitter_white", "youtube", "youtube_white"];
-const REQUEST_TIMEOUT = 30; // how many seconds until timeout?
+const REQUEST_TIMEOUT = 15; // how many seconds until timeout?
 
 // Variable to detect first run and refresh immidiately afterwards
 var first_run = false;
@@ -141,11 +141,10 @@ function getUsernameParameters(platform, parameters) {
 
 // Download icons
 async function downloadSocialIcons() {
-  console.log("loading and saving social icons");
   for (img of SOCIAL_ICONS_FILENAMES) {
     let img_path = fm.joinPath(icons_dir, img + ".png");
     if (!fm.fileExists(img_path)) {
-      console.log("loading image: " + img + ".png");
+      console.log("loading social icon: " + img + ".png");
       let request = new Request(SOCIAL_ICONS_FOLDER_URL + img + ".png");
       request.timeoutInterval = REQUEST_TIMEOUT;
       console.log(request);
@@ -192,14 +191,14 @@ async function writeDataToGraphCache(data) {
 async function getDataFromCache() {
   await fm.downloadFileFromiCloud(path);
   data = await JSON.parse(fm.readString(path));
-  console.log("fetching data from cache file was successful");
+  // console.log("fetching data from cache file was successful");
   return data;
 }
 
 async function getDataFromGraphCache() {
   await fm.downloadFileFromiCloud(graph_cache_path);
   data = await JSON.parse(fm.readString(graph_cache_path));
-  console.log("fetching data from cache file was successful");
+  // console.log("fetching data from cache file was successful");
   return data;
 }
 
@@ -218,11 +217,26 @@ async function addToGraphCache(platform, username, followers) {
     graph_cache[platform][username] = new Array();
   }
 
-  // create new entry
+  // create new entry object
   let graph_entry = new Object();
   graph_entry.timestamp = Date.now();
   graph_entry.followers = followers;
-  graph_cache[platform][username].push(graph_entry);
+
+  // check former record
+  if (graph_cache[platform][username].length > 0) {
+    // there is another entry
+    let former_record_position = graph_cache[platform][username].length-1;
+    let former_record = graph_cache[platform][username]
+    former_record = former_record_position[former_record_position];
+    // if the former record != the new record, write new entry to cache.
+    if (former_record != followers) {
+      // new value. write to cache.
+      graph_cache[platform][username].push(graph_entry);
+    }
+  } else {
+    // this is the first entry for the selected account on the selected platform. write to cache.
+    graph_cache[platform][username].push(graph_entry);
+  }
 
   writeDataToGraphCache(graph_cache);
 
@@ -235,16 +249,17 @@ async function addToGraphCache(platform, username, followers) {
 async function getFollowersFromGraphCache(platform, username) {
   let followers = -1;
 
-  if (ON_API_ERROR_GET_FROM_GRAPH_CACHE) {
+  if (ON_API_ERROR_GET_FROM_GRAPH_CACHE & !first_run) {
     let data = await getDataFromGraphCache();
-    let last_value = data[platform][username].pop();
-    // check if data is available
-    if (typeof last_value != "undefined"){
-      // data found in graph cache.
-      followers = last_value.followers;
-    } else {
-      // data not found in graph cache. output api error.
-      followers = -1;
+
+    // check if platform object exists
+    if (typeof data[platform] != "undefined"){
+      // check if data is available
+      if (typeof data[platform][username] != "undefined"){
+        // data found in graph cache.
+        let last_value = data[platform][username].pop();
+        followers = last_value.followers;
+      }
     }
 
   }
@@ -253,14 +268,14 @@ async function getFollowersFromGraphCache(platform, username) {
 }
 
 async function cleanUpGraphCache() {
-  var graph_cache = await getDataFromGraphCache();
+  let graph_cache = await getDataFromGraphCache();
 
-  var num_checked_records = 0;
-  var num_cleaned_up_elements = 0;
+  let num_checked_records = 0;
+  let num_cleaned_up_elements = 0;
 
-  var now = new Date();
-  var last_acceptable_timestamp = subtractDays(now, GRAPH_CACHE_MAX);
-  var yesterday_timestamp = subtractDays(now, 1);
+  let now = new Date();
+  let last_acceptable_timestamp = subtractDays(now, GRAPH_CACHE_MAX);
+  let yesterday_timestamp = subtractDays(now, 1);
 
   // iterate through platforms
   for (let i = 0; i < graph_cache.length-1; i++) {
@@ -540,7 +555,6 @@ async function loadTwitterFollowers(user) {
   let random_int = Math.floor(Math.random()*(NITTER_INSTANCES.length-1)); // random integer
   let nitter_instance_domain = NITTER_INSTANCES[random_int];
   // requesting data
-  // let request_url = "https://mobile.twitter.com/" + user;
   let url = "https://"
   url += nitter_instance_domain;
   url += "/";
@@ -559,13 +573,13 @@ async function loadTwitterFollowers(user) {
 
   let followers = 0;
   // check data that'll be returned by regex
-  if (typeof regex.exec(html)[1] == "undefined") {
+  if (!regex.test(html)) {
     // followers count couldn't be extracted
     followers = -1;
     console.error("Nitter API: " + nitter_instance_domain + ") threw an API Error. Please try another server.");
   } else {
     // get fourth regex match (Followers)
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       followers = regex.exec(html)[1];
     }
     followers = followers.replace(/\,|\./g, "");
@@ -732,7 +746,7 @@ async function getData(platform) {
   // Check if data is cached
   if (found_object_index != -1){
     // data is cached.
-    console.log("getData(): requested " + platform + " data (@" + username + ") is cached.");
+    // console.log("getData(): requested " + platform + " data (@" + username + ") is cached.");
 
     // now get timestamp 
     let found_object = from_cache.cached[found_object_index];
@@ -809,7 +823,7 @@ async function getData(platform) {
         } else {
           // api error. try to get old data from graph cache
           data = await getFollowersFromGraphCache(platform, username);
-          console.log(platform + " api error. tried to get old data from graph cache: " + data);
+          console.log(platform + " api error. loaded old data from graph cache instead: " + data);
         }
       } else {
         // everything fine with the last cached value. load from cache.
@@ -1039,7 +1053,10 @@ async function createSmallWidgetSingle(platform, showusername = true) {
     displayusername.textColor = font_color;
   }
 
-  small_widget_single.url = getProfileUrl(platform);
+  if (OPEN_PROFILE) {
+    // link stack to profile url
+    widget_stack.url = getProfileUrl(platform);
+  }
 
   return small_widget_single;
 }
@@ -1095,8 +1112,11 @@ async function createSmallWidgetMultiple(platforms, showusername = true) {
     }
     **/
 
-    // link stack to profile url
-    widget_stack.url = getProfileUrl(platform);
+    if (OPEN_PROFILE) {
+      // link stack to profile url
+      widget_stack.url = getProfileUrl(platform);
+    }
+
   }
 
   return small_widget_multiple;
@@ -1168,7 +1188,6 @@ if (display_mode == "error"){
 
 // Set refresh interval for the widget
 let next_widget_refresh = new Date();
-
 if (first_run) {
   // First run. Refresh widget in 10 seconds.
   next_widget_refresh.setSeconds(next_widget_refresh.getSeconds() + 10);
@@ -1177,6 +1196,25 @@ if (first_run) {
   next_widget_refresh.setMinutes(next_widget_refresh.getMinutes() + REFRESH_INTERVAL);
 }
 widget.refreshAfterDate = next_widget_refresh;
+console.log("scheduled next widget refresh to " + widget.refreshAfterDate);
+
+// CLEAN UP the GRAPH CACHE file
+let last_cleanup = new Date(await getLastGraphCacheCleanUpFromCache());
+console.log("last_cleanup: " + last_cleanup);
+let now = new Date();
+console.log("now: " + now);
+let time_since_last_cleanup = (now.getTime() - last_cleanup.getTime()) / 1000;
+time_since_last_cleanup /= (60 * 60);
+time_since_last_cleanup = Math.abs(Math.round(time_since_last_cleanup)).toFixed(2); // time since last cleanup in hours as float (toFixed(2))
+console.log("time_since_last_cleanup: " + time_since_last_cleanup);
+console.log("GRAPH_CACHE_CLEANUP: " + GRAPH_CACHE_CLEANUP);
+if (time_since_last_cleanup > GRAPH_CACHE_CLEANUP) {
+  // hasn't been cleaned since > GRAPH_CACHE_CLEANUP hours
+  // execute cleanup!
+  console.log("GraphCache cleanup started.")
+  await cleanUpGraphCache();
+  updateLastGraphCacheCleanUpInCache();
+}
 
 // Check where the script is running
 if (config.runsInWidget) {
@@ -1185,20 +1223,6 @@ if (config.runsInWidget) {
 } else {
   // Show the medium widget inside the app
   widget.presentMedium();
-}
-
-// Clean up the graph cache file
-let last_cleanup = new Date(getLastGraphCacheCleanUpFromCache());
-let now = new Date();
-
-let time_since_last_cleanup =(now.getTime() - last_cleanup.getTime()) / 1000;
-time_since_last_cleanup /= (60 * 60);
-time_since_last_cleanup = Math.abs(Math.round(time_since_last_cleanup)).toFixed(2); // time since last cleanup in hours as float (toFixed(2))
-if (time_since_last_cleanup > GRAPH_CACHE_CLEANUP) {
-  // hasn't been cleaned since > GRAPH_CACHE_CLEANUP hours
-  // execute cleanup!
-  await cleanUpGraphCache();
-  updateLastGraphCacheCleanUpInCache();
 }
 
 Script.complete();
