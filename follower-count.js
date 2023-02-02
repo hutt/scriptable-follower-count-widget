@@ -295,16 +295,16 @@ async function addToGraphCache(platform, username, followers) {
 
 async function getGraphDataFromGraphCache(platform, username) {
   let data = new Array();
-  let graph_cache = await getDataFromGraphCache();
 
-  // iterate through all values under platform, username
-  for (record of graph_cache[platform][username]) {
-    data.push(record.followers);
-  }
-
-  if (data.length < 1) {
-    error.status = true;
-    error.message = "Not enough data cached to display followers graph. Try again in " + (CACHE_TTL / 60) + "minutes.";
+  let graph_cache = new Object();
+  try {
+    graph_cache = await getDataFromGraphCache();
+    // iterate through all values under platform, username
+    for (record of graph_cache[platform][username]) {
+      data.push(record.followers);
+    }
+  } catch (err) {
+    data.push(-1);
   }
 
   return data;
@@ -995,7 +995,7 @@ class LineChart {
     let step = this.ctx.size.width / (count - 1);
     let points = this.values.map((current, index, all) => {
         let x = step*index;
-        let y = this.ctx.size.height - (current - minValue) / (difference * 1.6) * this.ctx.size.height;
+        let y = this.ctx.size.height - (current - minValue) / (difference * 1.4) * this.ctx.size.height;
         return new Point(x, y);
     });
     return this._getSmoothPath(points);
@@ -1266,7 +1266,7 @@ async function createMediumWidgetSingle(platform, showusername = true) {
       icon_version = "white";
       break;
     case "mastodon":
-      bg = ["gradient", ["#6262fc", "#573ed1"]];
+      bg = ["color", new Color("#6262fc")];
       font_color = new Color("#ffffff");
       icon_version = "white";
       break;
@@ -1333,8 +1333,9 @@ async function createMediumWidgetSingle(platform, showusername = true) {
   let data = await getData(platform);
   let display_follower_count = middle_stack_text.addText(data);
   display_follower_count.leftAlignText();
-  display_follower_count.font = Font.blackSystemFont(26);;
-  display_follower_count.minimumScaleFactor = 0.8;
+  display_follower_count.font = Font.blackSystemFont(24);
+  display_follower_count.lineLimit = 1;
+  display_follower_count.minimumScaleFactor = 0.5;
   display_follower_count.textColor = font_color;
 
   if (showusername) {
@@ -1342,7 +1343,8 @@ async function createMediumWidgetSingle(platform, showusername = true) {
     let displayusername = middle_stack_text.addText("@" + getUsername(platform));
     displayusername.leftAlignText();
     displayusername.font = Font.regularRoundedSystemFont(15);
-    displayusername.minimumScaleFactor = 0.8;
+    displayusername.lineLimit = 1;
+    displayusername.minimumScaleFactor = 0.75;
     displayusername.textColor = font_color;
   }
 
@@ -1371,14 +1373,17 @@ async function createMediumWidgetSingle(platform, showusername = true) {
   // get graph data
   let graph_data = await getGraphDataFromGraphCache(platform, getUsername(platform));
 
-  let chart = new LineChart(1500, 700, graph_data).configure((ctx, path) => {
-    ctx.opaque = false;
-    ctx.setFillColor(new Color("#ffffff", 0.2));
-    ctx.addPath(path);
-    ctx.fillPath(path);
-  }).getImage();
+  if (graph_data != -1){
+    // if there is data already, create graph
+    let chart = new LineChart(1500, 750, graph_data).configure((ctx, path) => {
+      ctx.opaque = false;
+      ctx.setFillColor(new Color("#ffffff", 0.2));
+      ctx.addPath(path);
+      ctx.fillPath(path);
+    }).getImage();
 
-  medium_widget_single.backgroundImage = chart;
+    medium_widget_single.backgroundImage = chart;
+  }
 
   return medium_widget_single;
 }
