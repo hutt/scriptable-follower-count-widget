@@ -45,7 +45,7 @@ example widget parameter strings: `display:twitter`, `display:twitter,instagram;
 - [x] find "ways" (api hacks) to get data from the initial five platforms
 - [x] create small widget that displays only one platform
 - [x] create small widget that displays multiple platforms
-- [ ] write cache function that allows caching of followers over time (prerequisite for the graph feature)
+- [x] write cache function that allows caching of followers over time (prerequisite for the graph feature)
 - [ ] create medium-sized widget that displays only one platform + graph
 - [ ] create medium-sized widget that displays multiple platforms
 - [ ] create large-sized widget that displays only one platform + graph
