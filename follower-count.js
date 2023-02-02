@@ -57,6 +57,9 @@ const CACHE_TTL = 300; // in seconds. 3600s = 1h
 // the long the number, the bigger gets graph-cache.json
 const GRAPH_CACHE_MAX = 30; // in days.
 
+// How often do you want to clean the old graph cache file?
+const GRAPH_CACHE_CLEANUP = 6; // in hours.
+
 // Styling
 const BACKGROUND_COLOR = Color.dynamic(
   new Color("#ffffff"), // Background color for the light theme
@@ -70,6 +73,9 @@ const TEXT_COLOR = Color.dynamic(
 
 // Refresh interval for the widgets
 const REFRESH_INTERVAL = 5; // in minutes
+
+// Array of nitter instances with a high availability
+const NITTER_INSTANCES = ["nitter.net", "nitter.lacontrevoie.fr", "nitter.pussthecat.org", "nitter.nixnet.services", "nitter.fdn.fr", "nitter.1d4.us", "nitter.kavin.rocks", "nitter.unixfox.eu", "nitter.domain.glass", "nitter.namazso.eu", "birdsite.xanny.family", "nitter.moomoo.me", "nittereu.moomoo.me", "bird.trom.tf", "nitter.it", "twitter.censors.us", "twitter.076.ne.jp"];
 
 // ####### END SETUP #######
 // don't touch anything under here, unless you know what you're doing
@@ -166,6 +172,18 @@ async function writeDataToCache(data) {
   console.log("saved new data to file");
 }
 
+async function getLastGraphCacheCleanUpFromCache() {
+  let from_cache = await getDataFromCache();
+  return from_cache.lastGraphCacheCleanUp;
+}
+
+async function updateLastGraphCacheCleanUpInCache() {
+  let from_cache = await getDataFromCache();
+  from_cache.lastGraphCacheCleanUp = Date.now();
+  fm.writeString(path, JSON.stringify(from_cache));
+  console.log("Updated lastGraphCacheCleanUp: " + Date.now());
+}
+
 async function writeDataToGraphCache(data) {
   fm.writeString(graph_cache_path, JSON.stringify(data));
   console.log("saved new data to graph cache file");
@@ -237,6 +255,9 @@ async function getFollowersFromGraphCache(platform, username) {
 async function cleanUpGraphCache() {
   var graph_cache = await getDataFromGraphCache();
 
+  var num_checked_records = 0;
+  var num_cleaned_up_elements = 0;
+
   var now = new Date();
   var last_acceptable_timestamp = subtractDays(now, GRAPH_CACHE_MAX);
   var yesterday_timestamp = subtractDays(now, 1);
@@ -250,24 +271,54 @@ async function cleanUpGraphCache() {
       // iterate through data
       for (let k = 0; k < graph_cache[i][j].length-1; k++) {
         let data = graph_cache[i][j][k];
-
-        // keep only one record if it's older than 24h
-        if (data.timestamp < yesterday_timestamp) {
-          // look if there is another record from that day
-
-          // if not, delete this record.
-        }
+        let search_for_other_records = true;
 
         // delete records older than last_acceptable_timestamp
         if (data.timestamp < last_acceptable_timestamp) {
+          // delete this record
           graph_cache[i][j].splice(i,1);
+          // increase counter of deleted records
+          num_cleaned_up_elements++;
+          // disable search for other records on the same day since this record has to be deleted anyways since it's too old.
+          search_for_other_records = false;
         }
+
+        // keep only one record if it's older than 24h
+        if (data.timestamp < yesterday_timestamp && search_for_other_records) {
+          // look if there is another record from that day
+          // define range to search for
+          let start_of_day = new Date(data.timestamp);
+          start_of_day.setUTCHours(0,0,0,0);
+          let end_of_day = new Date();
+          end_of_day.setUTCHours(23,59,59,999);
+
+          // iterate through all records of that account and search for another one 
+          let another_record_found = false;
+          for (record of graph_cache[i][j]) {
+            if (record.timestamp > start_of_day && record.timestamp < end_of_day) {
+              another_record_found = true;
+            }
+          }
+
+          if (another_record_found) {
+            // another record on that day has been found. delete this one.
+            graph_cache[i][j].splice(i,1);
+            // incerease counter of deleted records
+            num_cleaned_up_elements++;
+          }
+
+        }
+        // increase the counter of checked elements
+        num_checked_records++;
       }
     }
   }
 
   // write cleaned up cache file to cache
   writeDataToCache(graph_cache);
+
+  // log
+  console.log("cleanUpGraphCache(): " + num_checked_records + " Records have been checked. " + num_cleaned_up_elements + " have been deleted.");
 }
 
 function configFileFirstInit() {
@@ -277,6 +328,7 @@ function configFileFirstInit() {
   // define object variable to be written later on
   let data = new Object();
   data.cached = [];
+  data.lastGraphCacheCleanUp = Date.now();
 
   // write twitter username to cache (if set)
   if (twitter) {
@@ -484,9 +536,15 @@ function createLinearGradient(colors) {
 // LOAD functions
 // Load Twitter Followers
 async function loadTwitterFollowers(user) {
+  // get random nitter instance
+  let random_int = Math.floor(Math.random()*(NITTER_INSTANCES.length-1)); // random integer
+  let nitter_instance_domain = NITTER_INSTANCES[random_int];
   // requesting data
   // let request_url = "https://mobile.twitter.com/" + user;
-  let url = "https://nitter.net/" + user;
+  let url = "https://"
+  url += nitter_instance_domain;
+  url += "/";
+  url += user;
   let request = new Request(url);
   request.headers = {
     "User-Agent":
@@ -499,14 +557,20 @@ async function loadTwitterFollowers(user) {
   let html = await wv.getHTML();
   let regex = /\<span\sclass\=\"profile\-stat\-num\"\>([\d\.\,]+)\<\/span\>/gi;
 
-  // get fourth regex match (Followers)
   let followers = 0;
-  for (let i = 0; i < 3; i++) {
-    followers = regex.exec(html)[1];
+  // check data that'll be returned by regex
+  if (typeof regex.exec(html)[1] == "undefined") {
+    // followers count couldn't be extracted
+    followers = -1;
+    console.error("Nitter API: " + nitter_instance_domain + ") threw an API Error. Please try another server.");
+  } else {
+    // get fourth regex match (Followers)
+    for (let i = 0; i < 3; i++) {
+      followers = regex.exec(html)[1];
+    }
+    followers = followers.replace(/\,|\./g, "");
+    followers = parseInt(followers);
   }
-  followers = followers.replace(/\,|\./g, "");
-  followers = parseInt(followers);
-
   return followers;
 }
 
@@ -1104,6 +1168,7 @@ if (display_mode == "error"){
 
 // Set refresh interval for the widget
 let next_widget_refresh = new Date();
+
 if (first_run) {
   // First run. Refresh widget in 10 seconds.
   next_widget_refresh.setSeconds(next_widget_refresh.getSeconds() + 10);
@@ -1120,6 +1185,20 @@ if (config.runsInWidget) {
 } else {
   // Show the medium widget inside the app
   widget.presentMedium();
+}
+
+// Clean up the graph cache file
+let last_cleanup = new Date(getLastGraphCacheCleanUpFromCache());
+let now = new Date();
+
+let time_since_last_cleanup =(now.getTime() - last_cleanup.getTime()) / 1000;
+time_since_last_cleanup /= (60 * 60);
+time_since_last_cleanup = Math.abs(Math.round(time_since_last_cleanup)).toFixed(2); // time since last cleanup in hours as float (toFixed(2))
+if (time_since_last_cleanup > GRAPH_CACHE_CLEANUP) {
+  // hasn't been cleaned since > GRAPH_CACHE_CLEANUP hours
+  // execute cleanup!
+  await cleanUpGraphCache();
+  updateLastGraphCacheCleanUpInCache();
 }
 
 Script.complete();
