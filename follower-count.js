@@ -77,6 +77,9 @@ const REFRESH_INTERVAL = 5; // in minutes
 // Array of nitter instances with a high availability
 const NITTER_INSTANCES = ["nitter.net", "nitter.lacontrevoie.fr", "nitter.pussthecat.org", "nitter.nixnet.services", "nitter.fdn.fr", "nitter.1d4.us", "nitter.kavin.rocks", "nitter.unixfox.eu", "nitter.domain.glass", "nitter.namazso.eu", "birdsite.xanny.family", "nitter.moomoo.me", "nittereu.moomoo.me", "bird.trom.tf", "nitter.it", "twitter.censors.us", "twitter.076.ne.jp"];
 
+// Override locale? (affects the decimal seperator of your follower count ("," or "."))
+const OVERRIDE_LOCALE = "de"; // "en" = english, "de" = german, etc. leave empty if you're fine with your thousands seperator (99% of cases).
+
 // ####### END SETUP #######
 // don't touch anything under here, unless you know what you're doing
 
@@ -87,6 +90,16 @@ const REQUEST_TIMEOUT = 15; // how many seconds until timeout?
 
 // Variable to detect first run and refresh immidiately afterwards
 var first_run = false;
+
+// set locale 
+var locale = Device.locale();
+
+// only use first two characters of the locale string
+locale = locale.slice(0,2);
+
+if(OVERRIDE_LOCALE != "") {
+  locale = OVERRIDE_LOCALE; 
+}
 
 // create hidefollowers variable out of constant
 var hidefollowers_label = HIDE_FOLLOWERS_LABEL;
@@ -887,9 +900,6 @@ async function getData(platform) {
   } else {
     // Data without error
     // Format Data
-    // get first two characters of device locale 
-    let locale = Device.locale();
-    locale = locale.slice(0,2);
     data_string = data.toLocaleString(locale);
     if (!hidefollowers_label) {
       data_string = data_string + " " + followers_name;
