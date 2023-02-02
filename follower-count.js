@@ -887,7 +887,10 @@ async function getData(platform) {
   } else {
     // Data without error
     // Format Data
-    data_string = data.toLocaleString();
+    // get first two characters of device locale 
+    let locale = Device.locale();
+    locale = locale.slice(0,2);
+    data_string = data.toLocaleString(locale);
     if (!hidefollowers_label) {
       data_string = data_string + " " + followers_name;
     }
