@@ -634,8 +634,14 @@ async function loadMastodonFollowers(user) {
   let followers = -1;
   let request = new Request(url);
   request.timeoutInterval = REQUEST_TIMEOUT;
-  let data = await request.loadJSON();
-  followers = data.followers_count;
+  
+  try {
+    let data = await request.loadJSON();
+    followers = data.followers_count;
+  } catch (err) {
+    followers = -1;
+    console.error("Mastodon API Error (" + getMastodonInstanceUrl(user) + "): " + err);
+  }
 
   return followers;
 }
@@ -1373,7 +1379,7 @@ async function createMediumWidgetSingle(platform, showusername = true) {
   // get graph data
   let graph_data = await getGraphDataFromGraphCache(platform, getUsername(platform));
 
-  if (graph_data != -1){
+  if (graph_data.length > 3){
     // if there is data already, create graph
     let chart = new LineChart(1500, 750, graph_data).configure((ctx, path) => {
       ctx.opaque = false;
