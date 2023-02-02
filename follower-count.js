@@ -51,14 +51,14 @@ const OPEN_PROFILE = true;
 const ON_API_ERROR_GET_FROM_GRAPH_CACHE = true;
 
 // In which interval do you want to query your follower count?
-const CACHE_TTL = 3600; // in seconds. 3600s = 1h
+const CACHE_TTL = 600; // in seconds. 3600s = 1h
 
 // How long do you want to store data for the follower graphs
 // the long the number, the bigger gets graph-cache.json
 const GRAPH_CACHE_MAX = 30; // in days.
 
 // How often do you want to clean the old graph cache file?
-const GRAPH_CACHE_CLEANUP = 0; // in hours.
+const GRAPH_CACHE_CLEANUP = 6; // in hours.
 
 // Styling
 const BACKGROUND_COLOR = Color.dynamic(
@@ -295,7 +295,19 @@ async function addToGraphCache(platform, username, followers) {
 
 async function getGraphDataFromGraphCache(platform, username) {
   let data = new Array();
-  
+  let graph_cache = await getDataFromGraphCache();
+
+  // iterate through all values under platform, username
+  for (record of graph_cache[platform][username]) {
+    data.push(record.followers);
+  }
+
+  if (data.length < 1) {
+    error.status = true;
+    error.message = "Not enough data cached to display followers graph. Try again in " + (CACHE_TTL / 60) + "minutes.";
+  }
+
+  return data;
 }
 
 async function getFollowersFromGraphCache(platform, username) {
@@ -964,7 +976,7 @@ if (fm.listContents(icons_dir).length == 0) {
 let thin_font = Font.regularRoundedSystemFont(13);
 let small_font = Font.regularRoundedSystemFont(11);
 let bold_font = Font.blackSystemFont(20);
-let title_font = Font.heavySystemFont(16);
+let title_font = Font.heavySystemFont(25);
 
 // LineChart class by Kevin Kub (https://kevinkub.de). Many thanks!!!
 class LineChart {
@@ -983,7 +995,7 @@ class LineChart {
     let step = this.ctx.size.width / (count - 1);
     let points = this.values.map((current, index, all) => {
         let x = step*index;
-        let y = this.ctx.size.height - (current - minValue) / difference * this.ctx.size.height;
+        let y = this.ctx.size.height - (current - minValue) / (difference * 1.6) * this.ctx.size.height;
         return new Point(x, y);
     });
     return this._getSmoothPath(points);
@@ -1235,7 +1247,7 @@ async function createSmallWidgetMultiple(platforms, showusername = true) {
 
 // Widget medium, single
 async function createMediumWidgetSingle(platform, showusername = true) {
-  var small_widget_single = new ListWidget();
+  var medium_widget_single = new ListWidget();
 
   // set background and font color defaults
   let bg = ["color", BACKGROUND_COLOR];
@@ -1272,43 +1284,103 @@ async function createMediumWidgetSingle(platform, showusername = true) {
   if (bg[0] == "gradient"){
     // gradient
     let colors = bg[1]
-    small_widget_single.backgroundGradient = createLinearGradient(bg[1]);
+    medium_widget_single.backgroundGradient = createLinearGradient(bg[1]);
   } else {
     // color
-    small_widget_single.backgroundColor = bg[1];
+    medium_widget_single.backgroundColor = bg[1];
   }
 
-  // load and add social icon
+  // Widget Layout
+  // create vertical stack
+  var widget_stack_vertical = medium_widget_single.addStack();
+  widget_stack_vertical.layoutVertically();
+  widget_stack_vertical.topAlignContent();
+
+  // create top stack
+  var widget_stack_top = widget_stack_vertical.addStack();
+  widget_stack_top.layoutHorizontally();
+  widget_stack_top.centerAlignContent();
+
+  // spacer between top and middle stack
+  widget_stack_vertical.addSpacer();
+
+  // create middle stack
+  var widget_stack_middle = widget_stack_vertical.addStack();
+  widget_stack_middle.layoutHorizontally();
+  widget_stack_middle.centerAlignContent();
+  widget_stack_middle.setPadding(0,10,0,10);
+
+  // load and add social icon & add to middle stack
   var img = await getImageFor(platform, icon_version);
-  var widget_image = small_widget_single.addImage(img);
+  var widget_image_stack = widget_stack_middle.addStack();
+  widget_image_stack.layoutHorizontally();
+  widget_image_stack.centerAlignContent();
+  widget_image_stack.setPadding(0,10,0,5);
+
+  var widget_image = widget_image_stack.addImage(img);
   widget_image.imageSize = new Size(64, 64);
   widget_image.centerAlignImage();
 
-  small_widget_single.addSpacer(10);
+  // add spacer between image and follower count in middle stack
+  widget_stack_middle.addSpacer(10);
+
+  // add stack for middle stack text (followers+username)
+  var middle_stack_text = widget_stack_middle.addStack();
+  middle_stack_text.layoutVertically();
+  middle_stack_text.centerAlignContent();
 
   // get and display follower count for specific platform
   let data = await getData(platform);
-  let display_follower_count = small_widget_single.addText(data);
-  display_follower_count.centerAlignText();
-  display_follower_count.font = bold_font;
+  let display_follower_count = middle_stack_text.addText(data);
+  display_follower_count.leftAlignText();
+  display_follower_count.font = Font.blackSystemFont(26);;
   display_follower_count.minimumScaleFactor = 0.8;
   display_follower_count.textColor = font_color;
 
   if (showusername) {
-    small_widget_single.addSpacer(1);
-    let displayusername = small_widget_single.addText("@" + getUsername(platform));
-    displayusername.centerAlignText();
-    displayusername.font = small_font;
+    middle_stack_text.addSpacer(0);
+    let displayusername = middle_stack_text.addText("@" + getUsername(platform));
+    displayusername.leftAlignText();
+    displayusername.font = Font.regularRoundedSystemFont(15);
     displayusername.minimumScaleFactor = 0.8;
     displayusername.textColor = font_color;
   }
 
+  // add spacer after follower count & username stack
+  widget_stack_middle.addSpacer(0.25);
+
   if (OPEN_PROFILE) {
     // link stack to profile url
-    small_widget_single.url = getProfileUrl(platform);
+    widget_stack_middle.url = getProfileUrl(platform);
   }
 
-  return small_widget_single;
+  // add middle stack right
+  var middle_stack_right = widget_stack_middle.addStack();
+  middle_stack_right.layoutHorizontally();
+  middle_stack_right.centerAlignContent();
+  middle_stack_right.addSpacer(80);
+
+  // spacer between middle and bottom stack
+  widget_stack_vertical.addSpacer();
+
+  var widget_stack_bottom = widget_stack_vertical.addStack();
+  widget_stack_bottom.layoutHorizontally();
+  widget_stack_bottom.bottomAlignContent();
+  widget_stack_bottom.addSpacer(25);
+
+  // get graph data
+  let graph_data = await getGraphDataFromGraphCache(platform, getUsername(platform));
+
+  let chart = new LineChart(1500, 700, graph_data).configure((ctx, path) => {
+    ctx.opaque = false;
+    ctx.setFillColor(new Color("#ffffff", 0.2));
+    ctx.addPath(path);
+    ctx.fillPath(path);
+  }).getImage();
+
+  medium_widget_single.backgroundImage = chart;
+
+  return medium_widget_single;
 }
 
 // Widget medium, multiple
