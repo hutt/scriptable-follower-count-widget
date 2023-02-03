@@ -32,11 +32,11 @@ const STORE_CACHE = "icloud"; // options: icloud, local
 
 // Default usernames
 // (can be overwritten by widget parameters (see above))
-var twitter = "linksfraktion";
-var mastodon = "linksfraktion@social.linksfraktion.de";
-var instagram = "linksfraktion";
-var facebook = "linksfraktion";
-var youtube = "linksfraktion";
+var twitter = "tagesschau";
+var mastodon = "tagesschau@mastodon.social";
+var instagram = "tagesschau";
+var facebook = "tagesschau";
+var youtube = "tagesschau";
 
 // Append "Followers" or "Subscribers" behind the number?
 const HIDE_FOLLOWERS_LABEL = true;
@@ -52,6 +52,9 @@ const ON_API_ERROR_GET_FROM_GRAPH_CACHE = true;
 
 // In which interval do you want to query your follower count?
 const CACHE_TTL = 1800; // in seconds. 3600s = 1h
+
+// Only applys to the large widget: In what period of time should the follower growth be measured?
+const FOLLOWER_GRAPH_SCALE = 12; // in hours.
 
 // How long do you want to store data for the follower graphs
 // the long the number, the bigger gets graph-cache.json
@@ -75,7 +78,7 @@ const TEXT_COLOR = Color.dynamic(
 const REFRESH_INTERVAL = 5; // in minutes
 
 // Override locale? (affects the decimal seperator of your follower count ("," or "."))
-const OVERRIDE_LOCALE = "de"; // "en" = english, "de" = german, etc. leave empty if you're fine with your thousands seperator (99% of cases).
+const OVERRIDE_LOCALE = ""; // "en" = english, "de" = german, etc. leave empty if you're fine with your thousands seperator (99% of cases).
 
 // ####### END SETUP #######
 // don't touch anything under here, unless you know what you're doing
@@ -305,6 +308,80 @@ async function getGraphDataFromGraphCache(platform, username) {
   }
 
   return data;
+}
+
+async function calculateFollowerGain(platform, username) {
+  let follower_gain = new Object();
+  let graph_cache = new Object();
+  try {
+
+    graph_cache = await getDataFromGraphCache();
+    // iterate through all values under platform, username and get all objects needed
+    let data = new Array();
+    for (record of graph_cache[platform][username]) {
+      data.push(record);
+    }
+
+    // check if we got enough data.
+    if(data.length >= 3) {
+      //enough data collected
+
+      // calculate timestamp of the oldest record to search for
+      let substract_hours = FOLLOWER_GRAPH_SCALE * 60 * 60 * 1000; // convert hours in milliseconds
+      let now = Date.now();
+      let oldest_timestamp_to_search_for = now - substract_hours;
+
+      // search for the record with the closest timestamp
+      let closest_record_timestamp = data.map(o => o.timestamp).reduce(function(prev, curr) {
+        return (Math.abs(curr - oldest_timestamp_to_search_for) < Math.abs(prev - oldest_timestamp_to_search_for) ? curr : prev);
+      });
+
+      // get the requested record
+      let record = data.find(item => item.timestamp === closest_record_timestamp);
+
+      // if more than 30min difference to FOLLOWER_GRAPH_SCALE, calculate actual period of time elapsed
+      let oldest = oldest_timestamp_to_search_for - (30 * 60 * 1000);
+      let newest = oldest_timestamp_to_search_for + (30 * 60 * 1000);
+
+      // show actual graph scale, if record's timestamp is too far from the requested one
+      if (record.timestamp < oldest || record.timestamp > newest) {
+        // more than 30min difference between record's timestamp and actual timestamp we searched for
+        let actual_difference = ((now - record.timestamp) / (1000 * 60 * 60)).toFixed(1);
+        follower_gain.elapsedTime = actual_difference + " hours";
+      } else {
+        // actual record's timestamp within 30min window
+        follower_gain.elapsedTime = FOLLOWER_GRAPH_SCALE + " hours";
+      }
+
+      // calculate follower difference
+      let newest_record = data[(data.length - 1)];
+      let followers_difference = newest_record.followers - record.followers;
+      follower_gain.followers = followers_difference.toString();
+
+      // append -/+ if < 0 or > 0. don't do anything if it's 0
+      if (followers_difference > 0) {
+        follower_gain.followers = "+" + followers_difference;
+      }
+      if (followers_difference < 0) {
+        follower_gain.followers = "-" + followers_difference;
+      }
+
+    } else {
+      // not enough data. show info text in widget by returning null.
+      console.error("calculateFollowerGain(): not enough data; " + err);
+      follower_gain.followers = null;
+    }
+  } catch (err) {
+    // could not find .platform.username object array yet. show info text in widget by returning null.
+    console.error("calculateFollowerGain(): could not find .platform.username object array; " + err);
+    follower_gain.followers = null;
+  }
+
+  // test values
+  //follower_gain.followers = "+25";
+  //follower_gain.elapsedTime = "6 hours";
+
+  return follower_gain;
 }
 
 async function getFollowersFromGraphCache(platform, username) {
@@ -579,6 +656,28 @@ function createLinearGradient(colors) {
     return gradient;
 }
 
+function getFollowersName(platform) {
+  let followers_name = "followers";
+  switch (platform) {
+    case "twitter":
+      followers_name = "followers";
+      break;
+    case "mastodon":
+      followers_name = "followers";
+      break;
+    case "instagram":
+      followers_name = "followers";
+      break;
+    case "facebook":
+      followers_name = "page likes";
+      break;
+    case "youtube":
+      followers_name = "subscribers";
+      break;
+  }
+  return followers_name;
+}
+
 // helper function to display long usernames correctly
 function dynamicUsernameDisplay(text) {
   // if it's a mastodon username, split at @
@@ -617,7 +716,7 @@ async function loadTwitterFollowers(user) {
   if (!regex.test(html)) {
     // followers count couldn't be extracted
     followers = -1;
-    console.error("Nitter API: " + request.response.url + ") threw an API Error. Please try another server.");
+    console.error("Nitter API: " + request.response.url + ") threw an API Error (status code " + request.response.statusCode + ").");
   } else {
     // get fourth regex match (Followers)
     for (let i = 0; i < 2; i++) {
@@ -765,23 +864,23 @@ async function getData(platform) {
   switch (platform) {
     case "twitter":
       username = twitter;
-      followers_name = "Followers";
+      followers_name = getFollowersName(platform);
       break;
     case "mastodon":
       username = mastodon;
-      followers_name = "Followers";
+      followers_name = getFollowersName(platform);
       break;
     case "instagram":
       username = instagram;
-      followers_name = "Followers";
+      followers_name = getFollowersName(platform);
       break;
     case "facebook":
       username = facebook;
-      followers_name = "Page Likes";
+      followers_name = getFollowersName(platform);
       break;
     case "youtube":
       username = youtube;
-      followers_name = "Subscribers";
+      followers_name = getFollowersName(platform);
       break;
   }
   
@@ -1509,6 +1608,34 @@ async function createLargeWidgetSingle(platform, showusername = true) {
   // add spacer to make widget_stack_top left-aligned
   widget_stack_top.addSpacer();
 
+  // spacer between top and middle stack
+  widget_stack_vertical.addSpacer();
+
+  // create middle stack
+  var widget_stack_middle = widget_stack_vertical.addStack();
+  widget_stack_middle.layoutHorizontally();
+  widget_stack_middle.centerAlignContent();
+  widget_stack_middle.setPadding(0, 20, 15, 0);
+
+  // get middle stack info text
+  let follower_gain = await calculateFollowerGain(platform, getUsername(platform));
+  let middle_stack_info_text = new String();
+  if (follower_gain.followers != null) {
+    // enough data in cache to display text. build string.
+    middle_stack_info_text = follower_gain.followers + " " + getFollowersName(platform) + " in the last " + follower_gain.elapsedTime + ".";
+  } else {
+    // not enough data in cache yet
+    middle_stack_info_text = "Not enough data cached yet. Check back later or try lowering CACHE_TTL to collect more data in less time.";
+  }
+
+  // add additional text to middle stack
+  var middle_text = widget_stack_middle.addText(middle_stack_info_text);
+  middle_text.leftAlignText();
+  middle_text.font = Font.mediumRoundedSystemFont(18);
+  middle_text.lineLimit = 4;
+  middle_text.minimumScaleFactor = 0.8;
+  middle_text.textColor = font_color;
+
   // spacer between middle and bottom stack
   widget_stack_vertical.addSpacer();
 
@@ -1627,7 +1754,7 @@ if (first_run) {
   next_widget_refresh.setMinutes(next_widget_refresh.getMinutes() + REFRESH_INTERVAL);
 }
 widget.refreshAfterDate = next_widget_refresh;
-console.log("scheduled next widget refresh to " + widget.refreshAfterDate);
+console.log("next widget refresh scheduled for " + widget.refreshAfterDate);
 
 // CLEAN UP the GRAPH CACHE file
 let last_cleanup = new Date(await getLastGraphCacheCleanUpFromCache());
@@ -1635,9 +1762,7 @@ console.log("last graph cache cleanup: " + last_cleanup);
 let now = new Date();
 let time_since_last_cleanup = (now.getTime() - last_cleanup.getTime()) / 1000;
 time_since_last_cleanup /= (60 * 60);
-time_since_last_cleanup = Math.abs(Math.round(time_since_last_cleanup)).toFixed(2); // time since last cleanup in hours as float (toFixed(2))
-console.log("time_since_last_cleanup: " + time_since_last_cleanup);
-console.log("GRAPH_CACHE_CLEANUP: " + GRAPH_CACHE_CLEANUP);
+time_since_last_cleanup = Math.abs(Math.round(time_since_last_cleanup)); // time since last cleanup in hours as float (toFixed(2))
 
 if (time_since_last_cleanup > GRAPH_CACHE_CLEANUP) {
   // hasn't been cleaned since > GRAPH_CACHE_CLEANUP hours
