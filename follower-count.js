@@ -74,9 +74,6 @@ const TEXT_COLOR = Color.dynamic(
 // Refresh interval for the widgets
 const REFRESH_INTERVAL = 5; // in minutes
 
-// Array of nitter instances with a high availability
-const NITTER_INSTANCES = ["nitter.net", "nitter.lacontrevoie.fr", "nitter.pussthecat.org", "nitter.nixnet.services", "nitter.fdn.fr", "nitter.1d4.us", "nitter.kavin.rocks", "nitter.unixfox.eu", "nitter.domain.glass", "nitter.namazso.eu", "birdsite.xanny.family", "nitter.moomoo.me", "nittereu.moomoo.me", "bird.trom.tf", "nitter.it", "twitter.censors.us", "twitter.076.ne.jp"];
-
 // Override locale? (affects the decimal seperator of your follower count ("," or "."))
 const OVERRIDE_LOCALE = "de"; // "en" = english, "de" = german, etc. leave empty if you're fine with your thousands seperator (99% of cases).
 
@@ -599,12 +596,9 @@ function dynamicUsernameDisplay(text) {
 // Load Twitter Followers
 async function loadTwitterFollowers(user) {
   // get random nitter instance
-  let random_int = Math.floor(Math.random()*(NITTER_INSTANCES.length-1)); // random integer
-  let nitter_instance_domain = NITTER_INSTANCES[random_int];
+  // for this, we'll be using https://twiiit.com. They're monitoring all the instances listed in the wiki and redirect to a working one.
   // requesting data
-  let url = "https://"
-  url += nitter_instance_domain;
-  url += "/";
+  let url = "https://twiiit.com/";
   url += user;
   let request = new Request(url);
   request.headers = {
@@ -623,7 +617,7 @@ async function loadTwitterFollowers(user) {
   if (!regex.test(html)) {
     // followers count couldn't be extracted
     followers = -1;
-    console.error("Nitter API: " + nitter_instance_domain + ") threw an API Error. Please try another server.");
+    console.error("Nitter API: " + request.response.url + ") threw an API Error. Please try another server.");
   } else {
     // get fourth regex match (Followers)
     for (let i = 0; i < 2; i++) {
@@ -1000,10 +994,11 @@ let title_font = Font.heavySystemFont(25);
 // LineChart class by Kevin Kub (https://kevinkub.de). Many thanks!!!
 class LineChart {
 
-  constructor(width, height, values) {
+  constructor(width, height, values, height_factor) {
     this.ctx = new DrawContext();
     this.ctx.size = new Size(width, height);
     this.values = values;
+    this.height_factor = height_factor;
   }
   
   _calculatePath() {
@@ -1014,7 +1009,8 @@ class LineChart {
     let step = this.ctx.size.width / (count - 1);
     let points = this.values.map((current, index, all) => {
         let x = step*index;
-        let y = this.ctx.size.height - (current - minValue) / (difference * 1.4) * this.ctx.size.height;
+        //let y = this.ctx.size.height - (current - minValue) / (difference * 1.4) * this.ctx.size.height;
+        let y = this.ctx.size.height - (current - minValue) / (difference * this.height_factor) * this.ctx.size.height;
         return new Point(x, y);
     });
     return this._getSmoothPath(points);
@@ -1391,7 +1387,7 @@ async function createMediumWidgetSingle(platform, showusername = true) {
 
   if (graph_data.length > 3){
     // if there is data already, create graph
-    let chart = new LineChart(1500, 750, graph_data).configure((ctx, path) => {
+    let chart = new LineChart(2000, 1000, graph_data, 1.4).configure((ctx, path) => {
       ctx.opaque = false;
       ctx.setFillColor(new Color("#ffffff", 0.2));
       ctx.addPath(path);
@@ -1405,6 +1401,141 @@ async function createMediumWidgetSingle(platform, showusername = true) {
 }
 
 // Widget medium, multiple
+
+// Widget large, single
+async function createLargeWidgetSingle(platform, showusername = true) {
+  var large_widget_single = new ListWidget();
+
+  // set background and font color defaults
+  let bg = ["color", BACKGROUND_COLOR];
+  let font_color = TEXT_COLOR;
+  let icon_version = "standard";
+
+  switch(platform) {
+    case "twitter":
+      bg = ["color", new Color("#1d9bf0")];
+      font_color = new Color("#ffffff");
+      icon_version = "white";
+      break;
+    case "instagram":
+      bg = ["gradient", ["#4f5bd5", "#962fbf", "#d62976", "#fa7e1e", "#feda75"]];
+      font_color = new Color("#ffffff");
+      icon_version = "white";
+      break;
+    case "mastodon":
+      bg = ["color", new Color("#6262fc")];
+      font_color = new Color("#ffffff");
+      icon_version = "white";
+      break;
+    case "facebook":
+      bg = ["color", new Color("#1877f2")];
+      font_color = new Color("#ffffff");
+      icon_version = "white";
+      break;
+    case "youtube":
+      icon_version = "standard";
+      break;
+  }
+
+  // set background color or gradient
+  if (bg[0] == "gradient"){
+    // gradient
+    let colors = bg[1]
+    large_widget_single.backgroundGradient = createLinearGradient(bg[1]);
+  } else {
+    // color
+    large_widget_single.backgroundColor = bg[1];
+  }
+
+  // Widget Layout
+  // create vertical stack
+  var widget_stack_vertical = large_widget_single.addStack();
+  widget_stack_vertical.layoutVertically();
+  widget_stack_vertical.topAlignContent();
+  widget_stack_vertical.setPadding(0,0,0,0);
+
+  // create top stack
+  var widget_stack_top = widget_stack_vertical.addStack();
+  widget_stack_top.layoutHorizontally();
+  widget_stack_top.centerAlignContent();
+  widget_stack_top.setPadding(15,10,0,10);
+
+  // load and add social icon & add to top stack
+  var img = await getImageFor(platform, icon_version);
+  var widget_image_stack = widget_stack_top.addStack();
+  widget_image_stack.layoutHorizontally();
+  widget_image_stack.centerAlignContent();
+  widget_image_stack.setPadding(0,10,0,5);
+
+  var widget_image = widget_image_stack.addImage(img);
+  widget_image.imageSize = new Size(64, 64);
+  widget_image.leftAlignImage();
+
+  // add spacer between image and follower count in top stack
+  widget_stack_top.addSpacer(5);
+
+  // add stack for top stack text (followers+username)
+  var top_stack_text = widget_stack_top.addStack();
+  top_stack_text.layoutVertically();
+  top_stack_text.centerAlignContent();
+
+  // get and display follower count for specific platform
+  let data = await getData(platform);
+  let display_follower_count = top_stack_text.addText(data);
+  display_follower_count.leftAlignText();
+  display_follower_count.font = Font.blackSystemFont(30);
+  display_follower_count.lineLimit = 1;
+  display_follower_count.minimumScaleFactor = 0.5;
+  display_follower_count.textColor = font_color;
+
+  if (showusername) {
+    top_stack_text.addSpacer(0);
+    let displayusername = top_stack_text.addText("@" + dynamicUsernameDisplay(getUsername(platform)));
+    displayusername.leftAlignText();
+    displayusername.font = Font.regularRoundedSystemFont(15);
+    displayusername.lineLimit = 2;
+    displayusername.minimumScaleFactor = 0.7;
+    displayusername.textColor = font_color;
+  }
+
+  // add spacer after follower count & username stack
+  widget_stack_top.addSpacer(0.25);
+
+  if (OPEN_PROFILE) {
+    // link stack to profile url
+    widget_stack_top.url = getProfileUrl(platform);
+  }
+
+  // add spacer to make widget_stack_top left-aligned
+  widget_stack_top.addSpacer();
+
+  // spacer between middle and bottom stack
+  widget_stack_vertical.addSpacer();
+
+  var widget_stack_bottom = widget_stack_vertical.addStack();
+  widget_stack_bottom.layoutVertically();
+  widget_stack_bottom.bottomAlignContent();
+  widget_stack_bottom.setPadding(0,0,0,0);
+
+  // get graph data
+  let graph_data = await getGraphDataFromGraphCache(platform, getUsername(platform));
+
+  if (graph_data.length > 3){
+    // if there is data already, create graph
+    let chart = new LineChart(2500, 1000, graph_data, 1.2).configure((ctx, path) => {
+      ctx.opaque = false;
+      ctx.setFillColor(new Color("#ffffff", 0.2));
+      ctx.addPath(path);
+      ctx.fillPath(path);
+    }).getImage();
+
+    var chart_image = widget_stack_bottom.addImage(chart);
+    chart_image.containerRelativeShape = true;
+    chart_image.resizable = true;
+  }
+
+  return large_widget_single;
+}
 
 // Runtime:
 await downloadSocialIcons();
@@ -1469,7 +1600,7 @@ if (error.status) {
     switch (widget_size){
       case "large":
         // large single widget
-
+        widget = await createLargeWidgetSingle(platform, !HIDE_USERNAME);
         break;
       case "medium":
         // medium single widget
