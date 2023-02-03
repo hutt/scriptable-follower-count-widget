@@ -51,7 +51,7 @@ const OPEN_PROFILE = true;
 const ON_API_ERROR_GET_FROM_GRAPH_CACHE = true;
 
 // In which interval do you want to query your follower count?
-const CACHE_TTL = 600; // in seconds. 3600s = 1h
+const CACHE_TTL = 1800; // in seconds. 3600s = 1h
 
 // How long do you want to store data for the follower graphs
 // the long the number, the bigger gets graph-cache.json
@@ -580,6 +580,19 @@ function createLinearGradient(colors) {
     gradient.locations = locations_array;
     gradient.colors = colors_array;
     return gradient;
+}
+
+// helper function to display long usernames correctly
+function dynamicUsernameDisplay(text) {
+  // if it's a mastodon username, split at @
+  if (text.includes("@") && text.length > 20) {
+    let textArray = text.split("@");
+    text = textArray[0] + "\n@" + textArray[1];
+  } else {
+    //it's not a mastodon username.
+
+  }
+  return text;
 }
 
 // LOAD functions
@@ -1144,7 +1157,7 @@ async function createSmallWidgetSingle(platform, showusername = true) {
 
   if (showusername) {
     small_widget_single.addSpacer(1);
-    let displayusername = small_widget_single.addText("@" + getUsername(platform));
+    let displayusername = small_widget_single.addText("@" + dynamicUsernameDisplay(getUsername(platform)));
     displayusername.centerAlignText();
     displayusername.font = small_font;
     displayusername.minimumScaleFactor = 0.8;
@@ -1325,10 +1338,10 @@ async function createMediumWidgetSingle(platform, showusername = true) {
 
   var widget_image = widget_image_stack.addImage(img);
   widget_image.imageSize = new Size(64, 64);
-  widget_image.centerAlignImage();
+  widget_image.leftAlignImage();
 
   // add spacer between image and follower count in middle stack
-  widget_stack_middle.addSpacer(10);
+  widget_stack_middle.addSpacer(5);
 
   // add stack for middle stack text (followers+username)
   var middle_stack_text = widget_stack_middle.addStack();
@@ -1339,18 +1352,18 @@ async function createMediumWidgetSingle(platform, showusername = true) {
   let data = await getData(platform);
   let display_follower_count = middle_stack_text.addText(data);
   display_follower_count.leftAlignText();
-  display_follower_count.font = Font.blackSystemFont(24);
+  display_follower_count.font = Font.blackSystemFont(30);
   display_follower_count.lineLimit = 1;
   display_follower_count.minimumScaleFactor = 0.5;
   display_follower_count.textColor = font_color;
 
   if (showusername) {
     middle_stack_text.addSpacer(0);
-    let displayusername = middle_stack_text.addText("@" + getUsername(platform));
+    let displayusername = middle_stack_text.addText("@" + dynamicUsernameDisplay(getUsername(platform)));
     displayusername.leftAlignText();
     displayusername.font = Font.regularRoundedSystemFont(15);
-    displayusername.lineLimit = 1;
-    displayusername.minimumScaleFactor = 0.75;
+    displayusername.lineLimit = 2;
+    displayusername.minimumScaleFactor = 0.7;
     displayusername.textColor = font_color;
   }
 
@@ -1362,11 +1375,8 @@ async function createMediumWidgetSingle(platform, showusername = true) {
     widget_stack_middle.url = getProfileUrl(platform);
   }
 
-  // add middle stack right
-  var middle_stack_right = widget_stack_middle.addStack();
-  middle_stack_right.layoutHorizontally();
-  middle_stack_right.centerAlignContent();
-  middle_stack_right.addSpacer(80);
+  // add spacer to make widget_stack_middle left-aligned
+  widget_stack_middle.addSpacer();
 
   // spacer between middle and bottom stack
   widget_stack_vertical.addSpacer();
