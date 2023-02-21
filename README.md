@@ -50,11 +50,11 @@ example widget parameter strings: `display:twitter`, `display:twitter,instagram;
 - [x] create small widget that displays only one platform
 - [x] create small widget that displays multiple platforms
 - [x] write cache function that allows caching of followers over time (prerequisite for the graph feature)
-- [ ] create medium-sized widget that displays only one platform + graph
-- [ ] create medium-sized widget that displays multiple platforms
-- [ ] create large-sized widget that displays only one platform + graph
+- [x] create medium-sized widget that displays only one platform + graph
+- [x] create medium-sized widget that displays multiple platforms
+- [x] create large-sized widget that displays only one platform + graph
 - [ ] create large-sized widget that displays multiple platforms
-- [ ] better error reporting
+- [x] better error reporting
 - [ ] add support for more platforms (e.g. Flickr)
 - [ ] add support for more metrics than just follower counts
 
