@@ -32,11 +32,11 @@ const STORE_CACHE = "icloud"; // options: icloud, local
 
 // Default usernames
 // (can be overwritten by widget parameters (see above))
-var twitter = "tagesschau";
-var mastodon = "tagesschau@mastodon.social";
-var instagram = "tagesschau";
-var facebook = "tagesschau";
-var youtube = "tagesschau";
+var twitter = "linksfraktion";
+var mastodon = "linksfraktion@social.linksfraktion.de";
+var instagram = "linksfraktion";
+var facebook = "linksfraktion";
+var youtube = "linksfraktion";
 
 // Append "Followers" or "Subscribers" behind the number?
 const HIDE_FOLLOWERS_LABEL = true;
@@ -60,7 +60,7 @@ const FOLLOWER_GRAPH_SCALE = 12; // in hours.
 // the long the number, the bigger gets graph-cache.json
 const GRAPH_CACHE_MAX = 30; // in days.
 
-// How often do you want to clean the old graph cache file?
+// How often do you want to check if the script needs to clean the old graph cache?
 const GRAPH_CACHE_CLEANUP = 6; // in hours.
 
 // Styling
@@ -78,7 +78,7 @@ const TEXT_COLOR = Color.dynamic(
 const REFRESH_INTERVAL = 5; // in minutes
 
 // Override locale? (affects the decimal seperator of your follower count ("," or "."))
-const OVERRIDE_LOCALE = ""; // "en" = english, "de" = german, etc. leave empty if you're fine with your thousands seperator (99% of cases).
+const OVERRIDE_LOCALE = "de"; // "en" = english, "de" = german, etc. leave empty if you're fine with your thousands seperator (99% of cases).
 
 // ####### END SETUP #######
 // don't touch anything under here, unless you know what you're doing
@@ -299,9 +299,13 @@ async function getGraphDataFromGraphCache(platform, username) {
   let graph_cache = new Object();
   try {
     graph_cache = await getDataFromGraphCache();
+    let oldest_record_timestamp = Date.now() - (FOLLOWER_GRAPH_SCALE * 60 * 60 * 1000);
     // iterate through all values under platform, username
     for (record of graph_cache[platform][username]) {
-      data.push(record.followers);
+      if (record.timestamp > oldest_record_timestamp){
+        // only include data in graph that's within FOLLOWER_GRAPH_SCALE
+        data.push(record.followers);
+      }
     }
   } catch (err) {
     data.push(-1);
@@ -358,12 +362,12 @@ async function calculateFollowerGain(platform, username) {
       let followers_difference = newest_record.followers - record.followers;
       follower_gain.followers = followers_difference.toString();
 
-      // append -/+ if < 0 or > 0. don't do anything if it's 0
-      if (followers_difference > 0) {
-        follower_gain.followers = "+" + followers_difference;
+      // Format String
+      if (followers_difference >= 0) {
+        follower_gain.followers = "Gained " + followers_difference;
       }
       if (followers_difference < 0) {
-        follower_gain.followers = "-" + followers_difference;
+        follower_gain.followers = "Lost " + followers_difference;
       }
 
     } else {
@@ -1500,6 +1504,131 @@ async function createMediumWidgetSingle(platform, showusername = true) {
 }
 
 // Widget medium, multiple
+async function createMediumWidgetMultiple(platforms, showusername = true) {
+  var medium_widget_multiple = new ListWidget();
+
+  // set background and font color defaults
+  let bg = ["color", BACKGROUND_COLOR];
+  let font_color = TEXT_COLOR;
+  let icon_version = "white";
+
+  // set background color
+  medium_widget_multiple.backgroundColor = bg[1];
+
+  // Determine font size based on number of items
+  let item_num = platforms.length;
+  let base_font_size = 23;
+  // smaller font if > 4 items
+  if (item_num > 4) {
+    base_font_size = 20;
+  }
+  let font_size = base_font_size - item_num;
+
+  let followers_count_font = Font.blackSystemFont(font_size);
+
+  // element size factor
+  let element_size_factor = (1.2*item_num);
+
+  // Widget Layout
+  // create horizontal stack that contains two vertical stacks
+  // create horizontal stack
+  var widget_stack_horizontal = medium_widget_multiple.addStack();
+  widget_stack_horizontal.layoutHorizontally();
+  widget_stack_horizontal.topAlignContent();
+
+  // create vertical stack #1
+  var widget_stack_vertical_one = widget_stack_horizontal.addStack();
+  widget_stack_vertical_one.layoutVertically();
+  widget_stack_vertical_one.centerAlignContent();
+
+  // add spacer between the two vertical stacks
+  widget_stack_horizontal.addSpacer();
+
+  // create vertical stack #2
+  var widget_stack_vertical_two = widget_stack_horizontal.addStack();
+  widget_stack_vertical_two.layoutVertically();
+  widget_stack_vertical_two.centerAlignContent();
+
+  // get platforms
+  for (let i = 0; i < item_num; i++) {
+    let platform = platforms[i];
+
+    // check if index is even or odd
+    if(i%2 == 0) {
+      //The number is even
+      widget_stack = widget_stack_vertical_one.addStack();
+    } else {
+      //The number is odd
+      widget_stack = widget_stack_vertical_two.addStack();
+    }
+
+    // horizontal layout
+    widget_stack.layoutHorizontally();
+
+    // set padding top and bottom (top: number, leading: number, bottom: number, trailing: number)
+    widget_stack.setPadding((element_size_factor * 1.6), 5, (element_size_factor * 1.6), 5);
+
+    // create image stack
+    var widget_stack_img = widget_stack.addStack();
+    widget_stack_img.layoutVertically();
+    widget_stack_img.centerAlignContent();
+
+    // add spacer before img (to center it vertically before text stack)
+    widget_stack_img.addSpacer(2);
+
+    var img = await getImageFor(platform, icon_version);
+
+    // add image to image stack
+    var widget_image = widget_stack_img.addImage(img);
+    widget_image.imageSize = new Size(font_size * 1.75, font_size * 1.75);
+    widget_image.tintColor = TEXT_COLOR;
+    widget_image.leftAlignImage();
+
+    // add spacer after image
+    widget_stack_img.addSpacer(0);
+
+    // seperate image stack from text stack
+    widget_stack.addSpacer(4+element_size_factor);
+
+    // create text stack
+    var widget_stack_txt = widget_stack.addStack();
+    widget_stack_txt.layoutVertically();
+    widget_stack_txt.centerAlignContent();
+
+    // add spacer before text
+    widget_stack_txt.addSpacer(0);
+
+    // get and display follower count for specific platform
+    let data = await getData(platform);
+
+    // add text to text stack
+    let display_follower_count = widget_stack_txt.addText(data);
+    display_follower_count.leftAlignText();
+    display_follower_count.font = followers_count_font;
+    display_follower_count.textColor = font_color;
+
+    // add spacer after text
+    widget_stack_txt.addSpacer(0);
+
+    // display username
+    if (showusername) {
+      let displayusername = widget_stack_txt.addText("@" + getUsername(platform));
+      displayusername.leftAlignText();
+      displayusername.font = thin_font;
+      displayusername.minimumScaleFactor = 0.8;
+      displayusername.lineLimit = 1;
+      displayusername.textColor = font_color;
+    }
+
+    if (OPEN_PROFILE) {
+      // link stack to profile url
+      widget_stack.url = getProfileUrl(platform);
+    }
+
+  }
+
+  return medium_widget_multiple;
+}
 
 // Widget large, single
 async function createLargeWidgetSingle(platform, showusername = true) {
@@ -1709,7 +1838,7 @@ if (error.status) {
         break;
       case "medium":
         // medium multi widget
-
+        widget = await createMediumWidgetMultiple(platforms, !HIDE_USERNAME);
         break;
       case "small":
         // small multi widget
@@ -1717,7 +1846,7 @@ if (error.status) {
         break;
       default:
         // "null" (not running in a widget)
-        widget = await createSmallWidgetMultiple(platforms, !HIDE_USERNAME);
+        widget = await createMediumWidgetMultiple(platforms, !HIDE_USERNAME);
     }
   } else {
     // only one platform to show
